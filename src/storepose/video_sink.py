@@ -10,6 +10,10 @@ import numpy as np
 
 DEFAULT_FPS = 30.0
 
+# H.264 in an .mp4 container. Plays natively in QuickTime/Preview/browsers;
+# the older 'mp4v' (MPEG-4 Part 2) decodes as green static in many players.
+FOURCC = "avc1"
+
 
 class SinkOpenError(RuntimeError):
     """Raised when the output video writer cannot be created."""
@@ -43,7 +47,7 @@ class VideoSink:
         """Append one annotated frame to the output video."""
         if self._writer is None:
             height, width = frame.shape[:2]
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            fourcc = cv2.VideoWriter_fourcc(*FOURCC)
             writer = cv2.VideoWriter(self._path, fourcc, self._fps, (width, height))
             if not writer.isOpened():
                 raise SinkOpenError(f"Could not open video writer for {self._path!r}.")
