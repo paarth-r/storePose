@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# uv / venv
+.venv/
+
+# macOS
+.DS_Store
+
+# Large media + run artifacts
+videos/
+verify_frame.jpg
+*.mp4
