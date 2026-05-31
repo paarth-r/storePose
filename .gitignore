@@ -11,5 +11,7 @@ __pycache__/
 
 # Large media + run artifacts
 videos/
+outputs/
 verify_frame.jpg
 *.mp4
+*.jpg

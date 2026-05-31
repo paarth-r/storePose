@@ -14,20 +14,22 @@ class AppConfig:
     """Validated runtime configuration for the pose pipeline.
 
     Attributes:
-        source: OpenCV camera index (e.g. 0 for the default webcam).
+        source: Webcam index (int) or a path to a video file (str).
         mode: rtmlib model mode — one of ``MODES``.
         det_conf: Person-detection score threshold in ``[0, 1]``.
         kpt_thr: Per-keypoint confidence threshold for drawing, in ``[0, 1]``.
         device: Compute device — ``"cpu"`` or ``"mps"`` (CoreML).
         show_fps: Whether to overlay a rolling FPS counter.
+        save: Optional output path for an annotated .mp4; ``None`` to not save.
     """
 
-    source: int = 0
+    source: int | str = 0
     mode: str = "balanced"
     det_conf: float = 0.5
     kpt_thr: float = 0.5
     device: str = "mps"
     show_fps: bool = True
+    save: str | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -40,13 +42,23 @@ class AppConfig:
                 raise ValueError(f"{name} must be in [0, 1], got {value}")
 
 
+def parse_source(value: str | int) -> int | str:
+    """Interpret a source as a camera index if numeric, else a file path."""
+    if isinstance(value, int):
+        return value
+    return int(value) if value.isdigit() else value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="storepose",
         description="Realtime multi-person bounding boxes + RTMPose skeletons.",
     )
     parser.add_argument(
-        "--source", type=int, default=0, help="Webcam index (default: 0)."
+        "--source",
+        type=parse_source,
+        default=0,
+        help="Webcam index (e.g. 0) or path to a video file (default: 0).",
     )
     parser.add_argument(
         "--mode",
@@ -78,6 +90,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Disable the FPS overlay.",
     )
+    parser.add_argument(
+        "--save",
+        default=None,
+        metavar="PATH",
+        help="Also write the annotated stream to this .mp4 file.",
+    )
     return parser
 
 
@@ -91,4 +109,5 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         kpt_thr=args.kpt_thr,
         device=args.device,
         show_fps=args.show_fps,
+        save=args.save,
     )

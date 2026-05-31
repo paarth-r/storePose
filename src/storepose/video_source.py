@@ -1,4 +1,4 @@
-"""Webcam frame source with guaranteed cleanup."""
+"""Frame source (webcam or video file) with guaranteed cleanup."""
 
 from __future__ import annotations
 
@@ -9,24 +9,31 @@ import cv2
 import numpy as np
 
 
-class CameraOpenError(RuntimeError):
-    """Raised when the requested camera cannot be opened."""
+class SourceOpenError(RuntimeError):
+    """Raised when the requested camera or video file cannot be opened."""
+
+
+# Backwards-compatible alias.
+CameraOpenError = SourceOpenError
 
 
 class VideoSource:
-    """Context manager yielding BGR frames from a webcam.
+    """Context manager yielding BGR frames from a webcam or a video file.
 
     Use as::
 
-        with VideoSource(0) as source:
+        with VideoSource(0) as source:           # webcam index
             for frame in source:
                 ...
 
+        with VideoSource("clip.mp4") as source:  # video file
+            ...
+
     The capture device is always released on exit. Dropped/empty frames end
-    iteration (typical for a disconnected camera or end of a file source).
+    iteration (a disconnected camera or the end of a video file).
     """
 
-    def __init__(self, source: int = 0):
+    def __init__(self, source: int | str = 0):
         self._source = source
         self._cap: cv2.VideoCapture | None = None
 
@@ -34,12 +41,21 @@ class VideoSource:
         cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():
             cap.release()
-            raise CameraOpenError(
-                f"Could not open camera source {self._source!r}. "
-                "Check the index and camera permissions."
+            kind = "camera" if isinstance(self._source, int) else "video file"
+            raise SourceOpenError(
+                f"Could not open {kind} source {self._source!r}. "
+                "Check the path/index and camera permissions."
             )
         self._cap = cap
         return self
+
+    @property
+    def fps(self) -> float | None:
+        """Source frame rate if the backend reports a sane value, else None."""
+        if self._cap is None:
+            return None
+        fps = self._cap.get(cv2.CAP_PROP_FPS)
+        return fps if fps and fps > 0 else None
 
     def __iter__(self) -> Iterator[np.ndarray]:
         assert self._cap is not None, "VideoSource must be used as a context manager"

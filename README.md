@@ -20,11 +20,16 @@ This creates a Python 3.12 virtualenv and installs all dependencies. Models
 ## Run
 
 ```bash
-uv run python main.py                 # default webcam, balanced mode, CoreML
-uv run python main.py --source 1      # a different camera
-uv run python main.py --mode lightweight   # faster, slightly less accurate
-uv run python main.py --device cpu    # CPU fallback if CoreML misbehaves
+uv run python main.py                       # default webcam, balanced, CoreML
+uv run python main.py --source 1            # a different camera
+uv run python main.py --source videos/clip.mp4          # run on a video file
+uv run python main.py --source videos/clip.mp4 --save out.mp4   # display + save
+uv run python main.py --mode lightweight    # faster, slightly less accurate
+uv run python main.py --device cpu          # CPU fallback if CoreML misbehaves
 ```
+
+`--source` is a webcam index when numeric, otherwise a path to a video file.
+`--save PATH` writes the annotated stream to an .mp4 (display stays live).
 
 Press **`q`** or **Esc** in the window to quit.
 
@@ -32,7 +37,8 @@ Press **`q`** or **Esc** in the window to quit.
 
 | Flag          | Default    | Description                                        |
 |---------------|------------|----------------------------------------------------|
-| `--source`    | `0`        | Webcam index.                                      |
+| `--source`    | `0`        | Webcam index, or path to a video file.             |
+| `--save`      | —          | Write annotated output to this .mp4 path.          |
 | `--mode`      | `balanced` | `lightweight` \| `balanced` \| `performance`.      |
 | `--det-conf`  | `0.5`      | Person-detection confidence threshold.             |
 | `--kpt-thr`   | `0.5`      | Keypoint confidence threshold for drawing.         |
@@ -64,7 +70,8 @@ src/storepose/
   pipeline.py      PosePipeline.process(frame)  -> FrameResult
   drawing.py       annotate(frame, result, fps) -> annotated frame
   fps.py           FpsMeter (rolling average)
-  video_source.py  VideoSource (webcam, context manager)
+  video_source.py  VideoSource (webcam or file, context manager)
+  video_sink.py    VideoSink (annotated .mp4 writer, context manager)
   runner.py        capture -> process -> annotate -> display loop
 ```
 
