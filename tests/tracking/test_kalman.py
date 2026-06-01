@@ -30,6 +30,7 @@ def test_update_moves_toward_measurement():
 def test_predict_advances_by_velocity():
     t = KalmanBoxTracker(np.array([0, 0, 10, 10], float))
     for i in range(1, 6):
+        t.predict()
         t.update(np.array([10 * i, 0, 10 * i + 10, 10], float))  # +10/frame
     before = _cx(t.box)
     t.predict()

@@ -55,13 +55,7 @@ class KalmanBoxTracker:
         return self.box
 
     def update(self, box: np.ndarray) -> np.ndarray:
-        """Correct the state with a measured box; returns the filtered box.
-
-        Follows the standard SORT predict-then-update cycle: a predict step is
-        automatically applied before each correction so that velocity is learned
-        from successive position differences.
-        """
-        self.predict()
+        """Correct the state with a measured box; returns the filtered box."""
         z = _box_to_z(box)
         y = z - self.H @ self.x
         S = self.H @ self.P @ self.H.T + self.R
