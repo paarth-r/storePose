@@ -21,6 +21,13 @@ class AppConfig:
         device: Compute device — ``"cpu"`` or ``"mps"`` (CoreML).
         show_fps: Whether to overlay a rolling FPS counter.
         save: Optional output path for an annotated .mp4; ``None`` to not save.
+        track: Whether to track people (stable ids, coasting) vs raw per-frame.
+        hold_seconds: How long a lost person's box keeps coasting.
+        min_hits: Detections before a track is confirmed/drawn.
+        iou_thr: Min IoU to associate a detection to a track.
+        smooth: Whether to One-Euro smooth keypoints.
+        smooth_cutoff: One-Euro min_cutoff (lower = smoother/laggier).
+        smooth_beta: One-Euro beta (higher = more responsive to speed).
     """
 
     source: int | str = 0
@@ -30,6 +37,13 @@ class AppConfig:
     device: str = "mps"
     show_fps: bool = True
     save: str | None = None
+    track: bool = True
+    hold_seconds: float = 1.5
+    min_hits: int = 3
+    iou_thr: float = 0.3
+    smooth: bool = True
+    smooth_cutoff: float = 1.0
+    smooth_beta: float = 0.007
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -40,6 +54,16 @@ class AppConfig:
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {value}")
+        if self.min_hits < 1:
+            raise ValueError(f"min_hits must be >= 1, got {self.min_hits}")
+        if not 0.0 <= self.iou_thr <= 1.0:
+            raise ValueError(f"iou_thr must be in [0, 1], got {self.iou_thr}")
+        if self.hold_seconds < 0:
+            raise ValueError(f"hold_seconds must be >= 0, got {self.hold_seconds}")
+        if self.smooth_cutoff <= 0:
+            raise ValueError(f"smooth_cutoff must be > 0, got {self.smooth_cutoff}")
+        if self.smooth_beta < 0:
+            raise ValueError(f"smooth_beta must be >= 0, got {self.smooth_beta}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -96,6 +120,34 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Also write the annotated stream to this .mp4 file.",
     )
+    parser.add_argument(
+        "--no-track", dest="track", action="store_false",
+        help="Disable tracking; draw raw per-frame detections.",
+    )
+    parser.add_argument(
+        "--hold-seconds", type=float, default=1.5,
+        help="How long a lost person's box keeps coasting (default: 1.5).",
+    )
+    parser.add_argument(
+        "--min-hits", type=int, default=3,
+        help="Detections before a track is confirmed/drawn (default: 3).",
+    )
+    parser.add_argument(
+        "--iou-thr", type=float, default=0.3,
+        help="Min IoU to associate a detection to a track (default: 0.3).",
+    )
+    parser.add_argument(
+        "--no-smooth", dest="smooth", action="store_false",
+        help="Disable One-Euro keypoint smoothing.",
+    )
+    parser.add_argument(
+        "--smooth-cutoff", type=float, default=1.0,
+        help="One-Euro min_cutoff; lower = smoother/laggier (default: 1.0).",
+    )
+    parser.add_argument(
+        "--smooth-beta", type=float, default=0.007,
+        help="One-Euro beta; higher = more responsive to speed (default: 0.007).",
+    )
     return parser
 
 
@@ -110,4 +162,11 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         device=args.device,
         show_fps=args.show_fps,
         save=args.save,
+        track=args.track,
+        hold_seconds=args.hold_seconds,
+        min_hits=args.min_hits,
+        iou_thr=args.iou_thr,
+        smooth=args.smooth,
+        smooth_cutoff=args.smooth_cutoff,
+        smooth_beta=args.smooth_beta,
     )

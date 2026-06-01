@@ -41,3 +41,41 @@ def test_rejects_invalid(kwargs):
 def test_invalid_choice_exits():
     with pytest.raises(SystemExit):
         from_args(["--mode", "nope"])
+
+
+def test_tracking_defaults():
+    c = from_args([])
+    assert c.track is True
+    assert c.hold_seconds == 1.5
+    assert c.min_hits == 3
+    assert c.iou_thr == 0.3
+    assert c.smooth is True
+    assert c.smooth_cutoff == 1.0
+    assert c.smooth_beta == 0.007
+
+
+def test_tracking_flags():
+    c = from_args([
+        "--no-track", "--no-smooth", "--hold-seconds", "2.5",
+        "--min-hits", "5", "--iou-thr", "0.4",
+        "--smooth-cutoff", "0.5", "--smooth-beta", "0.01",
+    ])
+    assert c.track is False
+    assert c.smooth is False
+    assert c.hold_seconds == 2.5
+    assert c.min_hits == 5
+    assert c.iou_thr == 0.4
+    assert c.smooth_cutoff == 0.5
+    assert c.smooth_beta == 0.01
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"min_hits": 0},
+    {"iou_thr": 1.5},
+    {"hold_seconds": -1.0},
+    {"smooth_cutoff": 0.0},
+    {"smooth_beta": -0.1},
+])
+def test_tracking_rejects_invalid(kwargs):
+    with pytest.raises(ValueError):
+        AppConfig(**kwargs)
