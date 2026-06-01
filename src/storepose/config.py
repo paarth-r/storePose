@@ -32,7 +32,7 @@ class AppConfig:
 
     source: int | str = 0
     mode: str = "balanced"
-    det_conf: float = 0.5
+    det_conf: float = 0.95
     kpt_thr: float = 0.5
     device: str = "mps"
     show_fps: bool = True
@@ -93,8 +93,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--det-conf",
         type=float,
-        default=0.5,
-        help="Person detection confidence threshold (default: 0.5).",
+        default=0.95,
+        help="Person detection confidence threshold (default: 0.95).",
     )
     parser.add_argument(
         "--kpt-thr",
