@@ -8,6 +8,7 @@ from rtmlib import draw_skeleton
 
 from .config import AppConfig
 from .pipeline import FrameResult
+from .tracking.types import TrackedPerson
 
 BOX_COLOR = (0, 255, 0)
 TEXT_COLOR = (255, 255, 255)
@@ -70,4 +71,36 @@ def annotate(
         2,
         cv2.LINE_AA,
     )
+    return canvas
+
+
+def annotate_tracked(
+    frame: np.ndarray,
+    people: list[TrackedPerson],
+    config: AppConfig,
+    fps: float | None = None,
+) -> np.ndarray:
+    """Draw tracked people: stable-color box + ``ID n`` label, skeleton when
+    not coasting. Safe on an empty list and on coasting (poseless) people."""
+    canvas = frame.copy()
+
+    for p in people:
+        x1, y1, x2, y2 = (int(round(v)) for v in p.box[:4])
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), p.color, 2)
+        label = f"ID {p.id}"
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.rectangle(canvas, (x1, y1 - th - 6), (x1 + tw + 4, y1), p.color, -1)
+        cv2.putText(canvas, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 0, 0), 1, cv2.LINE_AA)
+        if p.keypoints is not None and p.scores is not None:
+            canvas = draw_skeleton(
+                canvas, p.keypoints[None, ...], p.scores[None, ...],
+                kpt_thr=config.kpt_thr, radius=3, line_width=2,
+            )
+
+    header = f"people: {len(people)}"
+    if config.show_fps and fps is not None:
+        header += f"   fps: {fps:4.1f}"
+    cv2.putText(canvas, header, (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                FPS_COLOR, 2, cv2.LINE_AA)
     return canvas

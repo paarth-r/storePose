@@ -1,9 +1,10 @@
 import numpy as np
 
 from storepose.config import AppConfig
-from storepose.drawing import annotate
+from storepose.drawing import annotate, annotate_tracked
 from storepose.pipeline import FrameResult
 from storepose.pose import NUM_KEYPOINTS
+from storepose.tracking.types import TrackedPerson
 
 
 def _blank():
@@ -33,3 +34,25 @@ def test_annotate_draws_box_pixels_for_a_person():
     # green box edge should appear somewhere on the frame
     assert (out[:, :, 1] > 0).sum() > 0
     assert out.shape == frame.shape
+
+
+def test_annotate_tracked_draws_box_and_skeleton():
+    frame = _blank()
+    p = TrackedPerson(
+        id=2, box=np.array([20, 20, 100, 100], float),
+        keypoints=np.full((NUM_KEYPOINTS, 2), 50.0), scores=np.ones(NUM_KEYPOINTS),
+        coasting=False, color=(0, 255, 0),
+    )
+    out = annotate_tracked(frame, [p], AppConfig(), fps=30.0)
+    assert out.shape == frame.shape
+    assert (out[:, :, 1] > 0).sum() > 0
+    assert np.array_equal(frame, _blank())  # input untouched
+
+
+def test_annotate_tracked_coasting_has_no_pose_and_no_crash():
+    p = TrackedPerson(
+        id=1, box=np.array([10, 10, 50, 50], float),
+        keypoints=None, scores=None, coasting=True, color=(255, 0, 0),
+    )
+    out = annotate_tracked(_blank(), [p], AppConfig(), fps=None)
+    assert out.shape == (120, 160, 3)
