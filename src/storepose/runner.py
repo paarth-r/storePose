@@ -47,7 +47,8 @@ class Runner:
                     max_age = max(1, round(config.hold_seconds * base_fps))
                     tracker = MultiObjectTracker(
                         max_age=max_age, min_hits=config.min_hits,
-                        iou_thr=config.iou_thr, smooth=config.smooth,
+                        iou_thr=config.iou_thr, max_overlap=config.max_overlap,
+                        smooth=config.smooth,
                         min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
                     )
 

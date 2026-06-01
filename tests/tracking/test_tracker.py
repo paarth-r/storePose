@@ -65,3 +65,35 @@ def test_tentative_track_dropped_on_miss():
     tr.update(make_result([[10, 10, 50, 90]]), 1 / 30)
     out = tr.update(make_result([[10, 10, 50, 90]]), 1 / 30)
     assert out and out[0].id == 1
+
+
+from storepose.tracking.tracker import suppress_coasting_duplicates
+
+
+class _FakeTrack:
+    def __init__(self, box, coasting, confirmed=True, hits=5):
+        self.box = np.array(box, float)
+        self.coasting = coasting
+        self.confirmed = confirmed
+        self.hits = hits
+
+
+def test_suppresses_coasting_ghost_over_active():
+    active = _FakeTrack([0, 0, 40, 80], coasting=False)
+    ghost = _FakeTrack([3, 3, 43, 83], coasting=True)  # IoU ~0.86
+    kept = suppress_coasting_duplicates([active, ghost], max_overlap=0.5)
+    assert active in kept and ghost not in kept
+
+
+def test_keeps_two_overlapping_active_tracks():
+    a = _FakeTrack([0, 0, 40, 80], coasting=False)
+    b = _FakeTrack([3, 3, 43, 83], coasting=False)  # both real detections
+    kept = suppress_coasting_duplicates([a, b], max_overlap=0.5)
+    assert len(kept) == 2  # never merge two genuinely-detected people
+
+
+def test_keeps_coasting_track_that_overlaps_nobody():
+    a = _FakeTrack([0, 0, 40, 80], coasting=False)
+    c = _FakeTrack([100, 0, 140, 80], coasting=True)  # separate, still predicted
+    kept = suppress_coasting_duplicates([a, c], max_overlap=0.5)
+    assert len(kept) == 2

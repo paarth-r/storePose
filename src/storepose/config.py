@@ -25,6 +25,8 @@ class AppConfig:
         hold_seconds: How long a lost person's box keeps coasting.
         min_hits: Detections before a track is confirmed/drawn.
         iou_thr: Min IoU to associate a detection to a track.
+        max_overlap: A coasting track overlapping a kept track by more than this
+            is dropped (suppresses duplicate boxes on one person).
         smooth: Whether to One-Euro smooth keypoints.
         smooth_cutoff: One-Euro min_cutoff (lower = smoother/laggier).
         smooth_beta: One-Euro beta (higher = more responsive to speed).
@@ -41,6 +43,7 @@ class AppConfig:
     hold_seconds: float = 1.5
     min_hits: int = 3
     iou_thr: float = 0.3
+    max_overlap: float = 0.5
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -58,6 +61,8 @@ class AppConfig:
             raise ValueError(f"min_hits must be >= 1, got {self.min_hits}")
         if not 0.0 <= self.iou_thr <= 1.0:
             raise ValueError(f"iou_thr must be in [0, 1], got {self.iou_thr}")
+        if not 0.0 <= self.max_overlap <= 1.0:
+            raise ValueError(f"max_overlap must be in [0, 1], got {self.max_overlap}")
         if self.hold_seconds < 0:
             raise ValueError(f"hold_seconds must be >= 0, got {self.hold_seconds}")
         if self.smooth_cutoff <= 0:
@@ -137,6 +142,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Min IoU to associate a detection to a track (default: 0.3).",
     )
     parser.add_argument(
+        "--max-overlap", type=float, default=0.5,
+        help="Drop a coasting track overlapping another by more than this "
+             "(suppresses duplicate boxes on one person; default: 0.5).",
+    )
+    parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
         help="Disable One-Euro keypoint smoothing.",
     )
@@ -166,6 +176,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         hold_seconds=args.hold_seconds,
         min_hits=args.min_hits,
         iou_thr=args.iou_thr,
+        max_overlap=args.max_overlap,
         smooth=args.smooth,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,

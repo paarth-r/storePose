@@ -79,3 +79,13 @@ def test_tracking_flags():
 def test_tracking_rejects_invalid(kwargs):
     with pytest.raises(ValueError):
         AppConfig(**kwargs)
+
+
+def test_max_overlap_default_and_flag():
+    assert from_args([]).max_overlap == 0.5
+    assert from_args(["--max-overlap", "0.7"]).max_overlap == 0.7
+
+
+def test_max_overlap_validation():
+    with pytest.raises(ValueError):
+        AppConfig(max_overlap=1.5)

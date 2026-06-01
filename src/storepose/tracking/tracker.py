@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
-from .assignment import match
+from .assignment import iou, match
 from .track import Track
 from .types import TrackedPerson
+
+
+def suppress_coasting_duplicates(tracks: list, max_overlap: float) -> list:
+    """Remove coasting (predicted) tracks that duplicate a kept track.
+
+    A coasting track is dropped when its box overlaps a higher-priority kept
+    track by more than ``max_overlap``. Non-coasting tracks are never dropped,
+    so two genuinely-detected people are never merged — this only removes the
+    "ghost" left behind when a track coasts while the same person re-spawns a
+    new track. Priority: actively-matched, then confirmed, then more hits.
+    """
+    order = sorted(tracks, key=lambda t: (t.coasting, not t.confirmed, -t.hits))
+    kept: list = []
+    for t in order:
+        if t.coasting and any(iou(t.box, k.box) > max_overlap for k in kept):
+            continue
+        kept.append(t)
+    return kept
 
 
 class MultiObjectTracker:
@@ -23,6 +41,7 @@ class MultiObjectTracker:
         smooth: bool = True,
         min_cutoff: float = 1.0,
         beta: float = 0.007,
+        max_overlap: float = 0.5,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -30,6 +49,7 @@ class MultiObjectTracker:
         self.smooth = smooth
         self.min_cutoff = min_cutoff
         self.beta = beta
+        self.max_overlap = max_overlap
         self._tracks: list[Track] = []
         self._next_id = 0
 
@@ -68,6 +88,9 @@ class MultiObjectTracker:
             if t.time_since_update <= self.max_age
             and not (t.time_since_update >= 1 and not t.confirmed)
         ]
+
+        # 5b. drop coasting ghosts that duplicate another track
+        self._tracks = suppress_coasting_duplicates(self._tracks, self.max_overlap)
 
         # 6. emit confirmed tracks
         people: list[TrackedPerson] = []

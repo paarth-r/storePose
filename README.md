@@ -48,6 +48,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--hold-seconds` | `1.5`   | How long a lost person's box keeps coasting.      |
 | `--min-hits`     | `3`     | Detections before a track is confirmed/drawn.     |
 | `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
+| `--max-overlap`  | `0.5`   | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 
 ## Tracking & smoothing
