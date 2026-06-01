@@ -55,6 +55,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--wait-speed`   | `0.15`  | Max speed (body-heights/sec) counted as "slow".   |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone+slow frames before WAITING. |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
+| `--zone-coverage`      | `0.5` | Box-fraction inside the zone when ankles are occluded. |
 | `--wait-log`     | —       | Append completed waits to this CSV.               |
 
 ## Tracking & smoothing
@@ -80,10 +81,15 @@ uv run python main.py --define-zone --source videos/clip.mp4
 uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log waits.csv
 ```
 
-A person is "waiting" once their foot point stays inside the zone while moving
-slowly (`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default
-5) consecutive frames; they stop waiting after `--wait-exit-seconds` out of that
-condition or when their track is lost.
+**In-zone test:** if an ankle keypoint is confident, the visible-ankle midpoint
+is tested against the polygon (precise, ignores box padding such as carts). When
+the feet are occluded, it falls back to *coverage* — the fraction of the box
+inside the zone must be ≥ `--zone-coverage`.
+
+A person is "waiting" once that in-zone test holds while they move slowly
+(`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default 5)
+consecutive frames; they stop after `--wait-exit-seconds` out of that condition
+or when their track is lost.
 
 Visual states:
 - **Joining** (candidate): an amber "sheer" fill rises over the box as a flood

@@ -35,6 +35,8 @@ class AppConfig:
         wait_speed: Max speed (body-heights/sec) to count as "slow".
         wait_enter_frames: Consecutive in-zone+slow frames before WAITING.
         wait_exit_seconds: Out-of-condition time before WAITING ends.
+        zone_coverage: When ankles are occluded, min fraction of the box inside
+            the zone to count as in-zone.
         wait_log: Optional CSV path to append completed waits.
     """
 
@@ -58,6 +60,7 @@ class AppConfig:
     wait_speed: float = 0.15
     wait_enter_frames: int = 5
     wait_exit_seconds: float = 2.0
+    zone_coverage: float = 0.5
     wait_log: str | None = None
 
     def __post_init__(self) -> None:
@@ -87,6 +90,8 @@ class AppConfig:
             raise ValueError(f"wait_enter_frames must be >= 1, got {self.wait_enter_frames}")
         if self.wait_exit_seconds < 0:
             raise ValueError(f"wait_exit_seconds must be >= 0, got {self.wait_exit_seconds}")
+        if not 0.0 <= self.zone_coverage <= 1.0:
+            raise ValueError(f"zone_coverage must be in [0, 1], got {self.zone_coverage}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -197,6 +202,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Out-of-condition time before WAITING ends (default: 2.0).",
     )
     parser.add_argument(
+        "--zone-coverage", type=float, default=0.5,
+        help="When ankles are occluded, min fraction of the box inside the zone "
+             "to count as in-zone (default: 0.5).",
+    )
+    parser.add_argument(
         "--wait-log", default=None, metavar="PATH",
         help="Append completed waits (id, entered, exited, seconds) as CSV.",
     )
@@ -227,5 +237,6 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_speed=args.wait_speed,
         wait_enter_frames=args.wait_enter_frames,
         wait_exit_seconds=args.wait_exit_seconds,
+        zone_coverage=args.zone_coverage,
         wait_log=args.wait_log,
     )

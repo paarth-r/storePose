@@ -10,6 +10,7 @@ from .types import CompletedWait, PersonStatus, QueueResult
 from .zone import Zone
 
 _SPEED_EMA_ALPHA = 0.5
+_L_ANKLE, _R_ANKLE = 15, 16  # COCO keypoint indices
 
 
 @dataclass
@@ -45,13 +46,38 @@ class QueueAnalyzer:
         wait_speed: float = 0.15,
         enter_frames: int = 5,
         exit_seconds: float = 2.0,
+        kpt_thr: float = 0.5,
+        coverage_thr: float = 0.5,
     ):
         self.zone = zone
         self.wait_speed = wait_speed
         self.enter_frames = max(1, enter_frames)
         self.exit_seconds = exit_seconds
+        self.kpt_thr = kpt_thr
+        self.coverage_thr = coverage_thr
         self._states: dict[int, _WaitState] = {}
         self._clock = 0.0
+
+    def _ground_and_in_zone(self, person: TrackedPerson) -> tuple[tuple[float, float], bool]:
+        """Return the person's ground point and whether they're in the zone.
+
+        Prefers visible ankle keypoints (precise, ignores box padding/carts). When
+        no ankle is confident (occlusion or no pose), falls back to the box-bottom
+        point and a coverage test: the fraction of the box inside the zone.
+        """
+        kpts, scores = person.keypoints, person.scores
+        if kpts is not None and scores is not None:
+            ankles = [
+                (float(kpts[idx][0]), float(kpts[idx][1]))
+                for idx in (_L_ANKLE, _R_ANKLE)
+                if float(scores[idx]) >= self.kpt_thr
+            ]
+            if ankles:
+                gx = sum(p[0] for p in ankles) / len(ankles)
+                gy = sum(p[1] for p in ankles) / len(ankles)
+                return (gx, gy), self.zone.contains((gx, gy))
+        foot = _foot(person.box)
+        return foot, self.zone.coverage(person.box) >= self.coverage_thr
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
         self._clock += dt
@@ -63,17 +89,17 @@ class QueueAnalyzer:
             present.add(person.id)
             st = self._states.setdefault(person.id, _WaitState())
 
-            foot = _foot(person.box)
+            ground, in_zone = self._ground_and_in_zone(person)
             box_h = max(float(person.box[3]) - float(person.box[1]), 1.0)
             if st.prev_foot is None:
                 inst_speed = 0.0
             else:
-                dist = math.hypot(foot[0] - st.prev_foot[0], foot[1] - st.prev_foot[1])
+                dist = math.hypot(ground[0] - st.prev_foot[0], ground[1] - st.prev_foot[1])
                 inst_speed = dist / max(dt, 1e-6) / box_h
-            st.prev_foot = foot
+            st.prev_foot = ground
             st.speed_ema = _SPEED_EMA_ALPHA * inst_speed + (1 - _SPEED_EMA_ALPHA) * st.speed_ema
 
-            in_cond = self.zone.contains(foot) and st.speed_ema < self.wait_speed
+            in_cond = in_zone and st.speed_ema < self.wait_speed
 
             if st.waiting:
                 st.wait_seconds += dt

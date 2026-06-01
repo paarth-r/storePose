@@ -27,3 +27,16 @@ def test_json_round_trip(tmp_path):
     loaded = Zone.load(path)
     assert loaded.points == z.points
     assert loaded.contains((50, 50)) is True
+
+
+def test_coverage_fully_inside_and_outside():
+    z = _square()
+    assert z.coverage([10, 10, 90, 90]) == 1.0
+    assert z.coverage([200, 200, 300, 300]) == 0.0
+
+
+def test_coverage_partial_is_about_half():
+    z = _square()
+    # box spans x 50..150 (right half outside the 0..100 square), y inside
+    cov = z.coverage([50, 10, 150, 90])
+    assert 0.4 < cov < 0.6

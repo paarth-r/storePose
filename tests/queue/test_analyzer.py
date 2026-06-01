@@ -70,3 +70,46 @@ def test_candidate_progress_then_inclusion():
     assert r5.statuses[0].waiting is True
     assert r5.statuses[0].candidate is False
     assert r5.statuses[0].progress == 1.0
+
+
+def _kpts_with_ankles(lx, ly, rx, ry, score=0.9):
+    k = np.zeros((17, 2), float)
+    s = np.zeros(17, float)
+    k[15] = (lx, ly); k[16] = (rx, ry)
+    s[15] = s[16] = score
+    return k, s
+
+
+def person_pose(pid, box, kpts, scores):
+    return TrackedPerson(id=pid, box=np.array(box, float),
+                         keypoints=kpts, scores=scores, coasting=False, color=(0, 255, 0))
+
+
+def test_ankle_inside_counts_even_if_box_mostly_outside():
+    # box is outside the zone, but the ankles are inside -> in zone via ankles
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0, kpt_thr=0.5)
+    k, s = _kpts_with_ankles(50, 50, 60, 50)  # well inside ZONE (0..200)
+    box = [300, 300, 360, 400]  # outside zone
+    an.update([person_pose(1, box, k, s)], 0.5)
+    r = an.update([person_pose(1, box, k, s)], 0.5)
+    assert r.statuses[0].waiting is True
+
+
+def test_occluded_ankles_fall_back_to_coverage():
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    k, s = _kpts_with_ankles(50, 50, 60, 50, score=0.1)  # ankles low confidence
+    box = [40, 40, 120, 160]  # mostly inside ZONE -> coverage high
+    an.update([person_pose(1, box, k, s)], 0.5)
+    r = an.update([person_pose(1, box, k, s)], 0.5)
+    assert r.statuses[0].waiting is True
+
+
+def test_occluded_ankles_box_outside_not_waiting():
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    k, s = _kpts_with_ankles(50, 50, 60, 50, score=0.1)
+    box = [400, 400, 480, 560]  # outside zone
+    an.update([person_pose(1, box, k, s)], 0.5)
+    r = an.update([person_pose(1, box, k, s)], 0.5)
+    assert r.statuses[0].waiting is False

@@ -65,6 +65,8 @@ class Runner:
                             zone, wait_speed=config.wait_speed,
                             enter_frames=config.wait_enter_frames,
                             exit_seconds=config.wait_exit_seconds,
+                            kpt_thr=config.kpt_thr,
+                            coverage_thr=config.zone_coverage,
                         )
 
                 wait_writer = None

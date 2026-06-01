@@ -27,6 +27,23 @@ class Zone:
         inside = cv2.pointPolygonTest(self._poly, (float(point[0]), float(point[1])), False)
         return inside >= 0
 
+    def coverage(self, box, grid: int = 7) -> float:
+        """Fraction of ``box`` (xyxy) inside the polygon, via a ``grid``x``grid``
+        sample of points across the box. 1.0 = fully inside, 0.0 = fully out."""
+        if len(self.points) < 3:
+            return 0.0
+        x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        if x2 <= x1 or y2 <= y1:
+            return 0.0
+        inside = 0
+        for i in range(grid):
+            px = x1 + (x2 - x1) * (i + 0.5) / grid
+            for j in range(grid):
+                py = y1 + (y2 - y1) * (j + 0.5) / grid
+                if cv2.pointPolygonTest(self._poly, (px, py), False) >= 0:
+                    inside += 1
+        return inside / (grid * grid)
+
     def to_dict(self) -> dict:
         return {"points": [list(p) for p in self.points]}
 

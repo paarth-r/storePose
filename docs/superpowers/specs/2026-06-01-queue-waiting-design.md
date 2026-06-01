@@ -30,9 +30,16 @@ tracker → list[TrackedPerson]
 
 ## Waiting state machine (per track id) — this is #1
 
-Per person each frame: `foot = ((x1+x2)/2, y2)`; `in_zone = zone.contains(foot)`;
-`speed_bh_s = EMA(|foot - prev_foot| / dt / box_height)`; `slow = speed_bh_s <
-wait_speed`. Condition `in_cond = in_zone and slow`.
+Per person each frame we pick a **ground point** and an **in-zone** test:
+- **Ankle if visible:** if a COCO ankle keypoint (15/16) clears `kpt_thr`, the
+  ground point is the visible-ankle midpoint and `in_zone = zone.contains(it)` —
+  precise, immune to box padding (carts) and bottom-edge occlusion.
+- **Coverage fallback:** otherwise (feet occluded / no pose), ground point is the
+  box-bottom-center and `in_zone = zone.coverage(box) >= zone_coverage`, where
+  coverage is the fraction of the box inside the polygon (grid sample).
+
+Then `speed_bh_s = EMA(|ground - prev_ground| / dt / box_height)`; `slow =
+speed_bh_s < wait_speed`; `in_cond = in_zone and slow`.
 
 ```
 NOT_WAITING ──(in_cond)──▶ CANDIDATE (progress = in_frames / enter_frames)
