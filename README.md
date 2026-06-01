@@ -50,6 +50,12 @@ Press **`q`** or **Esc** in the window to quit.
 | `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
 | `--max-overlap`  | `0.5`   | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
+| `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
+| `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
+| `--wait-speed`   | `0.15`  | Max speed (body-heights/sec) counted as "slow".   |
+| `--wait-enter-seconds` | `1.5` | In-zone+slow time before WAITING is declared.  |
+| `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
+| `--wait-log`     | —       | Append completed waits to this CSV.               |
 
 ## Tracking & smoothing
 
@@ -60,6 +66,27 @@ for `--hold-seconds` (skeleton hidden while coasting), then dropped. Someone who
 fully leaves and returns gets a new id (no appearance re-identification).
 
 A/B the behavior with `--no-track` (raw per-frame boxes) and `--no-smooth`.
+
+## Waiting in line
+
+Define a queue area once per (fixed) camera, then storePose flags each person
+**waiting** in it, shows a live **count**, and logs **per-person wait time**.
+
+```bash
+# 1. draw the queue polygon on a frame (click points, 's' to save, 'q' to quit)
+uv run python main.py --define-zone --source videos/clip.mp4
+
+# 2. run with the zone; optionally log completed waits to CSV
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log waits.csv
+```
+
+A person is "waiting" once their foot point stays inside the zone while moving
+slowly (`--wait-speed`, in body-heights/sec) for `--wait-enter-seconds`; they
+stop waiting after `--wait-exit-seconds` out of that condition or when their
+track is lost. The overlay shows the zone, a `WAIT n.n s` timer per person, and
+`in line: N`. The CSV rows are `id, entered_s, exited_s, wait_seconds`.
+
+Requires tracking (on by default) — waiting state is keyed by stable id.
 
 ## Performance
 
@@ -90,6 +117,7 @@ src/storepose/
   video_sink.py    VideoSink (annotated .mp4 writer, context manager)
   runner.py        capture -> process -> (track) -> annotate -> display loop
   tracking/        SORT tracker: assignment, kalman, smoothing, track, tracker
+  queue/           zone, analyzer (waiting state machine), zone_editor
 ```
 
 Each stage has one job and a clean interface; detector and pose are injectable,

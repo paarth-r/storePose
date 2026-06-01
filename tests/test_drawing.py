@@ -56,3 +56,24 @@ def test_annotate_tracked_coasting_has_no_pose_and_no_crash():
     )
     out = annotate_tracked(_blank(), [p], AppConfig(), fps=None)
     assert out.shape == (120, 160, 3)
+
+
+def test_annotate_queue_draws_zone_and_count():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    person = TrackedPerson(id=1, box=np.array([20, 20, 60, 100], float),
+                           keypoints=None, scores=None, coasting=False, color=(0, 255, 0))
+    result = QueueResult(statuses=[PersonStatus(1, True, 3.4)], count=1)
+    zone = Zone([(0, 0), (120, 0), (120, 110), (0, 110)])
+    out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
+    assert out.shape == frame.shape
+    assert (out[:, :, 2] > 0).sum() > 0  # zone/tag drawn (orange has red channel)
+
+
+def test_annotate_queue_safe_without_zone():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import QueueResult
+    out = annotate_queue(_blank(), [], QueueResult(statuses=[], count=0), None, AppConfig())
+    assert out.shape == (120, 160, 3)

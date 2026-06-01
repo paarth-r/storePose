@@ -1,16 +1,19 @@
-"""Realtime loop: capture → process → (track) → annotate → display (+ save)."""
+"""Realtime loop: capture → process → track → annotate → display (+ save)."""
 
 from __future__ import annotations
 
+import csv
 import time
 from contextlib import ExitStack
 
 import cv2
 
 from .config import AppConfig
-from .drawing import annotate, annotate_tracked
+from .drawing import annotate, annotate_queue, annotate_tracked
 from .fps import FpsMeter
 from .pipeline import PosePipeline
+from .queue.analyzer import QueueAnalyzer
+from .queue.zone import Zone
 from .tracking.tracker import MultiObjectTracker
 from .video_sink import VideoSink
 from .video_source import VideoSource
@@ -52,6 +55,25 @@ class Runner:
                         min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
                     )
 
+                zone, analyzer = None, None
+                if config.zone:
+                    if tracker is None:
+                        print("Note: --zone needs tracking; ignoring (you passed --no-track).")
+                    else:
+                        zone = Zone.load(config.zone)
+                        analyzer = QueueAnalyzer(
+                            zone, wait_speed=config.wait_speed,
+                            enter_seconds=config.wait_enter_seconds,
+                            exit_seconds=config.wait_exit_seconds,
+                        )
+
+                wait_writer = None
+                if config.wait_log and analyzer is not None:
+                    log_file = stack.enter_context(open(config.wait_log, "w", newline=""))
+                    wait_writer = csv.writer(log_file)
+                    wait_writer.writerow(["id", "entered_s", "exited_s", "wait_seconds"])
+                    print(f"Logging completed waits to {config.wait_log}")
+
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
                 prev = None
                 for frame in source:
@@ -64,6 +86,15 @@ class Runner:
                     if tracker is not None:
                         people = tracker.update(result, dt)
                         canvas = annotate_tracked(frame, people, config, fps)
+                        if analyzer is not None:
+                            qresult = analyzer.update(people, dt)
+                            canvas = annotate_queue(canvas, people, qresult, zone, config)
+                            if wait_writer is not None:
+                                for c in qresult.completed:
+                                    wait_writer.writerow(
+                                        [c.id, f"{c.entered_s:.2f}", f"{c.exited_s:.2f}",
+                                         f"{c.wait_seconds:.2f}"]
+                                    )
                     else:
                         canvas = annotate(frame, result, config, fps)
 

@@ -15,3 +15,6 @@ outputs/
 verify_frame.jpg
 *.mp4
 *.jpg
+
+# Camera zone files (per-camera config)
+zones/

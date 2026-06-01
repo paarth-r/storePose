@@ -30,6 +30,12 @@ class AppConfig:
         smooth: Whether to One-Euro smooth keypoints.
         smooth_cutoff: One-Euro min_cutoff (lower = smoother/laggier).
         smooth_beta: One-Euro beta (higher = more responsive to speed).
+        zone: Path to a queue-zone JSON; enables waiting detection when set.
+        define_zone: Launch the interactive zone editor and exit.
+        wait_speed: Max speed (body-heights/sec) to count as "slow".
+        wait_enter_seconds: In-zone+slow time before WAITING is declared.
+        wait_exit_seconds: Out-of-condition time before WAITING ends.
+        wait_log: Optional CSV path to append completed waits.
     """
 
     source: int | str = 0
@@ -47,6 +53,12 @@ class AppConfig:
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
+    zone: str | None = None
+    define_zone: bool = False
+    wait_speed: float = 0.15
+    wait_enter_seconds: float = 1.5
+    wait_exit_seconds: float = 2.0
+    wait_log: str | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -69,6 +81,12 @@ class AppConfig:
             raise ValueError(f"smooth_cutoff must be > 0, got {self.smooth_cutoff}")
         if self.smooth_beta < 0:
             raise ValueError(f"smooth_beta must be >= 0, got {self.smooth_beta}")
+        if self.wait_speed <= 0:
+            raise ValueError(f"wait_speed must be > 0, got {self.wait_speed}")
+        for name in ("wait_enter_seconds", "wait_exit_seconds"):
+            value = getattr(self, name)
+            if value < 0:
+                raise ValueError(f"{name} must be >= 0, got {value}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -158,6 +176,30 @@ def _build_parser() -> argparse.ArgumentParser:
         "--smooth-beta", type=float, default=0.007,
         help="One-Euro beta; higher = more responsive to speed (default: 0.007).",
     )
+    parser.add_argument(
+        "--zone", default=None, metavar="PATH",
+        help="Queue-zone JSON to load; enables waiting-in-line detection.",
+    )
+    parser.add_argument(
+        "--define-zone", dest="define_zone", action="store_true",
+        help="Launch the interactive zone editor for --source and exit.",
+    )
+    parser.add_argument(
+        "--wait-speed", type=float, default=0.15,
+        help="Max speed in body-heights/sec to count as 'slow' (default: 0.15).",
+    )
+    parser.add_argument(
+        "--wait-enter-seconds", type=float, default=1.5,
+        help="In-zone+slow time before WAITING is declared (default: 1.5).",
+    )
+    parser.add_argument(
+        "--wait-exit-seconds", type=float, default=2.0,
+        help="Out-of-condition time before WAITING ends (default: 2.0).",
+    )
+    parser.add_argument(
+        "--wait-log", default=None, metavar="PATH",
+        help="Append completed waits (id, entered, exited, seconds) as CSV.",
+    )
     return parser
 
 
@@ -180,4 +222,10 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         smooth=args.smooth,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
+        zone=args.zone,
+        define_zone=args.define_zone,
+        wait_speed=args.wait_speed,
+        wait_enter_seconds=args.wait_enter_seconds,
+        wait_exit_seconds=args.wait_exit_seconds,
+        wait_log=args.wait_log,
     )
