@@ -42,6 +42,15 @@ drops out:
 
 `in_zone = ankle_inside or covered`.
 
+**Speed** is measured from the stable Kalman box-bottom (never the ankle), so an
+ankle flashing in/out can't create a fake speed spike that drops `in_cond`.
+
+**Grace:** a brief loss of `in_cond` does not reset progress. `out_streak`
+accumulates only while `in_cond` is false; a candidate's `in_frames` resets (and
+a wait ends) only once `out_streak >= exit_seconds`. So a flickering ankle or a
+momentary coverage dip holds the inclusion counter / keeps the wait timer
+running rather than restarting it.
+
 Then `speed_bh_s = EMA(|ground - prev_ground| / dt / box_height)`; `slow =
 speed_bh_s < wait_speed`; `in_cond = in_zone and slow`.
 

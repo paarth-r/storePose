@@ -140,3 +140,35 @@ def test_wait_not_reset_when_ankle_leaves_but_box_covered():
     assert r.statuses[0].waiting is True  # not reset
     assert r.statuses[0].wait_seconds > 0
     assert len(r.completed) == 0
+
+
+def test_candidate_progress_not_reset_by_brief_ankle_dropout():
+    # Box sits OUTSIDE the coverage zone, so in-zone depends only on the ankle.
+    # The ankle flashes out for one frame; progress must hold (grace), so the
+    # person still reaches inclusion.
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=3, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    box = [400, 400, 480, 560]  # outside ZONE -> coverage 0
+    k_in, s_in = _kpts_with_ankles(50, 50, 60, 50, score=0.9)   # ankle inside zone
+    k_out, s_out = _kpts_with_ankles(50, 50, 60, 50, score=0.1)  # ankle not visible
+
+    an.update([person_pose(1, box, k_in, s_in)], 0.1)   # in_frames 1
+    an.update([person_pose(1, box, k_in, s_in)], 0.1)   # in_frames 2
+    an.update([person_pose(1, box, k_out, s_out)], 0.1)  # dropout -> hold at 2
+    r = an.update([person_pose(1, box, k_in, s_in)], 0.1)  # 3 -> waiting
+    assert r.statuses[0].waiting is True
+
+
+def test_candidate_resets_after_sustained_loss():
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=3, exit_seconds=0.3,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    box = [400, 400, 480, 560]  # outside zone
+    k_in, s_in = _kpts_with_ankles(50, 50, 60, 50, score=0.9)
+    k_out, s_out = _kpts_with_ankles(50, 50, 60, 50, score=0.1)
+    an.update([person_pose(1, box, k_in, s_in)], 0.1)   # in_frames 1
+    an.update([person_pose(1, box, k_in, s_in)], 0.1)   # in_frames 2
+    # sustained loss > exit_seconds (0.3): 4 * 0.1 = 0.4 -> reset
+    for _ in range(4):
+        an.update([person_pose(1, box, k_out, s_out)], 0.1)
+    r = an.update([person_pose(1, box, k_in, s_in)], 0.1)  # only in_frames 1 again
+    assert r.statuses[0].waiting is False

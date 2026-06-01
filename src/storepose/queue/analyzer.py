@@ -58,18 +58,12 @@ class QueueAnalyzer:
         self._states: dict[int, _WaitState] = {}
         self._clock = 0.0
 
-    def _ground_and_in_zone(self, person: TrackedPerson) -> tuple[tuple[float, float], bool]:
-        """Return the person's ground point and whether they're in the zone.
-
-        In-zone is an OR of two signals so a held position isn't lost when one
-        drops out: the visible-ankle midpoint inside the polygon (precise, ignores
-        box padding/carts), OR the box-coverage fraction inside the zone meeting
-        ``coverage_thr`` (robust when feet leave frame / are occluded). The ground
-        point used for speed prefers the visible ankles, else the box bottom.
-        """
-        ground = _foot(person.box)
-        ankle_inside = False
-
+    def _in_zone(self, person: TrackedPerson) -> bool:
+        """Whether the person is in the zone, as an OR of two signals so a held
+        position isn't lost when one drops out: the visible-ankle midpoint inside
+        the polygon (precise, ignores box padding/carts), OR the box-coverage
+        fraction inside the zone meeting ``coverage_thr`` (robust when feet leave
+        frame / are occluded)."""
         kpts, scores = person.keypoints, person.scores
         if kpts is not None and scores is not None:
             ankles = [
@@ -78,14 +72,13 @@ class QueueAnalyzer:
                 if float(scores[idx]) >= self.kpt_thr
             ]
             if ankles:
-                ground = (
+                mid = (
                     sum(p[0] for p in ankles) / len(ankles),
                     sum(p[1] for p in ankles) / len(ankles),
                 )
-                ankle_inside = self.zone.contains(ground)
-
-        covered = self.zone.coverage(person.box) >= self.coverage_thr
-        return ground, (ankle_inside or covered)
+                if self.zone.contains(mid):
+                    return True
+        return self.zone.coverage(person.box) >= self.coverage_thr
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
         self._clock += dt
@@ -97,18 +90,22 @@ class QueueAnalyzer:
             present.add(person.id)
             st = self._states.setdefault(person.id, _WaitState())
 
-            ground, in_zone = self._ground_and_in_zone(person)
+            # Speed uses the stable Kalman box-bottom, never the ankle, so an
+            # ankle flashing in/out can't create a fake speed spike.
+            foot = _foot(person.box)
             box_h = max(float(person.box[3]) - float(person.box[1]), 1.0)
             if st.prev_foot is None:
                 inst_speed = 0.0
             else:
-                dist = math.hypot(ground[0] - st.prev_foot[0], ground[1] - st.prev_foot[1])
+                dist = math.hypot(foot[0] - st.prev_foot[0], foot[1] - st.prev_foot[1])
                 inst_speed = dist / max(dt, 1e-6) / box_h
-            st.prev_foot = ground
+            st.prev_foot = foot
             st.speed_ema = _SPEED_EMA_ALPHA * inst_speed + (1 - _SPEED_EMA_ALPHA) * st.speed_ema
 
-            in_cond = in_zone and st.speed_ema < self.wait_speed
+            in_cond = self._in_zone(person) and st.speed_ema < self.wait_speed
 
+            # A brief loss of in_cond does not reset progress; only a loss
+            # sustained for >= exit_seconds resets a candidate or ends a wait.
             if st.waiting:
                 st.wait_seconds += dt
                 if in_cond:
@@ -122,16 +119,19 @@ class QueueAnalyzer:
                         st.waiting = False
                         st.wait_seconds = 0.0
                         st.in_frames = 0
+                        st.out_streak = 0.0
             else:
                 if in_cond:
+                    st.out_streak = 0.0
                     st.in_frames += 1
                     if st.in_frames >= self.enter_frames:
                         st.waiting = True
                         st.entered_s = self._clock
                         st.wait_seconds = 0.0
-                        st.out_streak = 0.0
                 else:
-                    st.in_frames = 0
+                    st.out_streak += dt
+                    if st.out_streak >= self.exit_seconds:
+                        st.in_frames = 0  # candidate truly gone; reset progress
 
             candidate = not st.waiting and st.in_frames > 0
             progress = 1.0 if st.waiting else min(st.in_frames / self.enter_frames, 1.0)
