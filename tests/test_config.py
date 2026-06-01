@@ -123,3 +123,10 @@ def test_queue_flags():
 def test_queue_rejects_invalid(kwargs):
     with pytest.raises(ValueError):
         AppConfig(**kwargs)
+
+
+def test_zone_foot_band_default_flag_and_validation():
+    assert from_args([]).zone_foot_band == 0.3
+    assert from_args(["--zone-foot-band", "0.25"]).zone_foot_band == 0.25
+    with pytest.raises(ValueError):
+        AppConfig(zone_foot_band=0.0)

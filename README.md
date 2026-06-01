@@ -55,7 +55,8 @@ Press **`q`** or **Esc** in the window to quit.
 | `--wait-speed`   | `0.15`  | Max speed (body-heights/sec) counted as "slow".   |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone+slow frames before WAITING. |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
-| `--zone-coverage`      | `0.5` | Box-fraction inside the zone when ankles are occluded. |
+| `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
+| `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
 | `--wait-log`     | —       | Append completed waits to this CSV.               |
 
 ## Tracking & smoothing
@@ -83,10 +84,12 @@ uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log
 
 **In-zone test (OR of two signals):** a person counts as in-zone if **either**
 the visible-ankle midpoint is inside the polygon (precise, ignores box padding
-such as carts) **or** the fraction of the box inside the zone is ≥
-`--zone-coverage`. The OR means a held position isn't lost when feet leave frame
-or an ankle drifts outside while the body is still in the zone — the wait timer
-keeps running.
+such as carts) **or** the **foot region** of the box — its bottom
+`--zone-foot-band` (default 30%) — is ≥ `--zone-coverage` inside the zone.
+Coverage uses only the foot region, not the whole box, because a standing
+person's box is mostly torso/head that projects *above* a floor zone. The OR
+means a held position isn't lost when feet leave frame or an ankle drifts
+outside while the body is still in the zone — the wait timer keeps running.
 
 A person is "waiting" once that in-zone test holds while they move slowly
 (`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default 5)

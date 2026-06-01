@@ -172,3 +172,17 @@ def test_candidate_resets_after_sustained_loss():
         an.update([person_pose(1, box, k_out, s_out)], 0.1)
     r = an.update([person_pose(1, box, k_in, s_in)], 0.1)  # only in_frames 1 again
     assert r.statuses[0].waiting is False
+
+
+def test_standing_person_triggers_via_foot_region_coverage():
+    # Floor strip zone (bottom of frame). A standing person's box extends well
+    # ABOVE the strip, so whole-box coverage is < 0.5, but the foot region is
+    # inside -> should count as in-zone with NO ankle keypoints.
+    floor = Zone([(0, 120), (200, 120), (200, 200), (0, 200)])
+    an = QueueAnalyzer(floor, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5, foot_band=0.3)
+    box = [40, 20, 120, 180]  # head at y=20 (above strip), feet at y=180 (inside)
+    assert floor.coverage(box) < 0.5  # whole-box coverage would NOT trigger
+    an.update([person(1, box)], 0.5)
+    r = an.update([person(1, box)], 0.5)
+    assert r.statuses[0].waiting is True

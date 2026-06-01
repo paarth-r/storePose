@@ -67,6 +67,7 @@ class Runner:
                             exit_seconds=config.wait_exit_seconds,
                             kpt_thr=config.kpt_thr,
                             coverage_thr=config.zone_coverage,
+                            foot_band=config.zone_foot_band,
                         )
 
                 wait_writer = None

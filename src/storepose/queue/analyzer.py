@@ -48,6 +48,7 @@ class QueueAnalyzer:
         exit_seconds: float = 2.0,
         kpt_thr: float = 0.5,
         coverage_thr: float = 0.5,
+        foot_band: float = 0.3,
     ):
         self.zone = zone
         self.wait_speed = wait_speed
@@ -55,15 +56,26 @@ class QueueAnalyzer:
         self.exit_seconds = exit_seconds
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
+        self.foot_band = foot_band
         self._states: dict[int, _WaitState] = {}
         self._clock = 0.0
+
+    def _foot_box(self, box) -> tuple[float, float, float, float]:
+        """The bottom ``foot_band`` strip of the box — where floor contact is.
+
+        Coverage is measured here, not over the whole box, because a standing
+        person's box is mostly torso/head that projects above a floor zone.
+        """
+        x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        band = max(1.0, (y2 - y1) * self.foot_band)
+        return (x1, y2 - band, x2, y2)
 
     def _in_zone(self, person: TrackedPerson) -> bool:
         """Whether the person is in the zone, as an OR of two signals so a held
         position isn't lost when one drops out: the visible-ankle midpoint inside
-        the polygon (precise, ignores box padding/carts), OR the box-coverage
-        fraction inside the zone meeting ``coverage_thr`` (robust when feet leave
-        frame / are occluded)."""
+        the polygon (precise, ignores box padding/carts), OR the coverage of the
+        foot region inside the zone meeting ``coverage_thr`` (robust when feet
+        leave frame / are occluded)."""
         kpts, scores = person.keypoints, person.scores
         if kpts is not None and scores is not None:
             ankles = [
@@ -78,7 +90,7 @@ class QueueAnalyzer:
                 )
                 if self.zone.contains(mid):
                     return True
-        return self.zone.coverage(person.box) >= self.coverage_thr
+        return self.zone.coverage(self._foot_box(person.box)) >= self.coverage_thr
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
         self._clock += dt

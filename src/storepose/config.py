@@ -35,8 +35,10 @@ class AppConfig:
         wait_speed: Max speed (body-heights/sec) to count as "slow".
         wait_enter_frames: Consecutive in-zone+slow frames before WAITING.
         wait_exit_seconds: Out-of-condition time before WAITING ends.
-        zone_coverage: When ankles are occluded, min fraction of the box inside
-            the zone to count as in-zone.
+        zone_coverage: When ankles are occluded, min fraction of the foot region
+            inside the zone to count as in-zone.
+        zone_foot_band: Bottom fraction of the box treated as the foot region
+            for coverage.
         wait_log: Optional CSV path to append completed waits.
     """
 
@@ -61,6 +63,7 @@ class AppConfig:
     wait_enter_frames: int = 5
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
+    zone_foot_band: float = 0.3
     wait_log: str | None = None
 
     def __post_init__(self) -> None:
@@ -92,6 +95,8 @@ class AppConfig:
             raise ValueError(f"wait_exit_seconds must be >= 0, got {self.wait_exit_seconds}")
         if not 0.0 <= self.zone_coverage <= 1.0:
             raise ValueError(f"zone_coverage must be in [0, 1], got {self.zone_coverage}")
+        if not 0.0 < self.zone_foot_band <= 1.0:
+            raise ValueError(f"zone_foot_band must be in (0, 1], got {self.zone_foot_band}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -203,8 +208,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--zone-coverage", type=float, default=0.5,
-        help="When ankles are occluded, min fraction of the box inside the zone "
-             "to count as in-zone (default: 0.5).",
+        help="When ankles are occluded, min fraction of the foot region inside "
+             "the zone to count as in-zone (default: 0.5).",
+    )
+    parser.add_argument(
+        "--zone-foot-band", type=float, default=0.3,
+        help="Bottom fraction of the box used as the foot region for coverage "
+             "(default: 0.3).",
     )
     parser.add_argument(
         "--wait-log", default=None, metavar="PATH",
@@ -238,5 +248,6 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_enter_frames=args.wait_enter_frames,
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,
+        zone_foot_band=args.zone_foot_band,
         wait_log=args.wait_log,
     )

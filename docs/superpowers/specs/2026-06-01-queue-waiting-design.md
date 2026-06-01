@@ -36,9 +36,12 @@ drops out:
 - **Ankle:** if a COCO ankle keypoint (15/16) clears `kpt_thr`, `ankle_inside =
   zone.contains(visible-ankle midpoint)` — precise, immune to box padding (carts)
   and bottom-edge occlusion. The midpoint is also the ground point for speed.
-- **Coverage:** `covered = zone.coverage(box) >= zone_coverage`, the fraction of
-  the box inside the polygon (grid sample) — robust when feet leave frame / are
-  occluded. Ground point falls back to box-bottom-center when no ankle is visible.
+- **Coverage:** `covered = zone.coverage(foot_box) >= zone_coverage`, the fraction
+  of the **foot region** inside the polygon (grid sample), where `foot_box` is the
+  bottom `zone_foot_band` (default 0.3) of the box. Only the foot strip is used,
+  not the whole box, because a standing person's box is mostly torso/head that
+  projects above a floor zone — whole-box coverage would under-count. Robust when
+  feet leave frame / are occluded.
 
 `in_zone = ankle_inside or covered`.
 
