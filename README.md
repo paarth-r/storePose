@@ -44,6 +44,21 @@ Press **`q`** or **Esc** in the window to quit.
 | `--kpt-thr`   | `0.5`      | Keypoint confidence threshold for drawing.         |
 | `--device`    | `mps`      | `mps` (CoreML) or `cpu`.                           |
 | `--no-fps`    | —          | Hide the FPS overlay.                              |
+| `--no-track`     | —       | Disable tracking; draw raw per-frame detections.  |
+| `--hold-seconds` | `1.5`   | How long a lost person's box keeps coasting.      |
+| `--min-hits`     | `3`     | Detections before a track is confirmed/drawn.     |
+| `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
+| `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
+
+## Tracking & smoothing
+
+By default each person gets a stable `ID n` and a SORT-style tracker (Kalman +
+IoU) keeps that box alive through brief occlusions (coasting), while a One-Euro
+filter smooths the skeleton. A box that loses its detection is predicted forward
+for `--hold-seconds` (skeleton hidden while coasting), then dropped. Someone who
+fully leaves and returns gets a new id (no appearance re-identification).
+
+A/B the behavior with `--no-track` (raw per-frame boxes) and `--no-smooth`.
 
 ## Performance
 
@@ -72,7 +87,8 @@ src/storepose/
   fps.py           FpsMeter (rolling average)
   video_source.py  VideoSource (webcam or file, context manager)
   video_sink.py    VideoSink (annotated .mp4 writer, context manager)
-  runner.py        capture -> process -> annotate -> display loop
+  runner.py        capture -> process -> (track) -> annotate -> display loop
+  tracking/        SORT tracker: assignment, kalman, smoothing, track, tracker
 ```
 
 Each stage has one job and a clean interface; detector and pose are injectable,
