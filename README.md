@@ -81,10 +81,12 @@ uv run python main.py --define-zone --source videos/clip.mp4
 uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log waits.csv
 ```
 
-**In-zone test:** if an ankle keypoint is confident, the visible-ankle midpoint
-is tested against the polygon (precise, ignores box padding such as carts). When
-the feet are occluded, it falls back to *coverage* — the fraction of the box
-inside the zone must be ≥ `--zone-coverage`.
+**In-zone test (OR of two signals):** a person counts as in-zone if **either**
+the visible-ankle midpoint is inside the polygon (precise, ignores box padding
+such as carts) **or** the fraction of the box inside the zone is ≥
+`--zone-coverage`. The OR means a held position isn't lost when feet leave frame
+or an ankle drifts outside while the body is still in the zone — the wait timer
+keeps running.
 
 A person is "waiting" once that in-zone test holds while they move slowly
 (`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default 5)

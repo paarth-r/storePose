@@ -61,10 +61,15 @@ class QueueAnalyzer:
     def _ground_and_in_zone(self, person: TrackedPerson) -> tuple[tuple[float, float], bool]:
         """Return the person's ground point and whether they're in the zone.
 
-        Prefers visible ankle keypoints (precise, ignores box padding/carts). When
-        no ankle is confident (occlusion or no pose), falls back to the box-bottom
-        point and a coverage test: the fraction of the box inside the zone.
+        In-zone is an OR of two signals so a held position isn't lost when one
+        drops out: the visible-ankle midpoint inside the polygon (precise, ignores
+        box padding/carts), OR the box-coverage fraction inside the zone meeting
+        ``coverage_thr`` (robust when feet leave frame / are occluded). The ground
+        point used for speed prefers the visible ankles, else the box bottom.
         """
+        ground = _foot(person.box)
+        ankle_inside = False
+
         kpts, scores = person.keypoints, person.scores
         if kpts is not None and scores is not None:
             ankles = [
@@ -73,11 +78,14 @@ class QueueAnalyzer:
                 if float(scores[idx]) >= self.kpt_thr
             ]
             if ankles:
-                gx = sum(p[0] for p in ankles) / len(ankles)
-                gy = sum(p[1] for p in ankles) / len(ankles)
-                return (gx, gy), self.zone.contains((gx, gy))
-        foot = _foot(person.box)
-        return foot, self.zone.coverage(person.box) >= self.coverage_thr
+                ground = (
+                    sum(p[0] for p in ankles) / len(ankles),
+                    sum(p[1] for p in ankles) / len(ankles),
+                )
+                ankle_inside = self.zone.contains(ground)
+
+        covered = self.zone.coverage(person.box) >= self.coverage_thr
+        return ground, (ankle_inside or covered)
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
         self._clock += dt

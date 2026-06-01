@@ -113,3 +113,30 @@ def test_occluded_ankles_box_outside_not_waiting():
     an.update([person_pose(1, box, k, s)], 0.5)
     r = an.update([person_pose(1, box, k, s)], 0.5)
     assert r.statuses[0].waiting is False
+
+
+def test_ankle_outside_but_box_covered_stays_in_zone():
+    # Ankle keypoints are confident but OUTSIDE the zone, yet the box is mostly
+    # inside -> OR keeps the person in-zone (timer must not reset).
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    k, s = _kpts_with_ankles(500, 500, 510, 500, score=0.9)  # outside ZONE (0..200)
+    box = [40, 40, 120, 160]  # mostly inside ZONE -> coverage high
+    an.update([person_pose(1, box, k, s)], 0.5)
+    r = an.update([person_pose(1, box, k, s)], 0.5)
+    assert r.statuses[0].waiting is True
+
+
+def test_wait_not_reset_when_ankle_leaves_but_box_covered():
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+                       kpt_thr=0.5, coverage_thr=0.5)
+    box = [40, 40, 120, 160]  # inside zone
+    k_in, s_in = _kpts_with_ankles(80, 150, 90, 150, score=0.9)
+    an.update([person_pose(1, box, k_in, s_in)], 0.5)
+    an.update([person_pose(1, box, k_in, s_in)], 0.5)  # waiting now
+    # ankle now confidently OUTSIDE the zone, but box still covered
+    k_out, s_out = _kpts_with_ankles(500, 500, 510, 500, score=0.9)
+    r = an.update([person_pose(1, box, k_out, s_out)], 0.5)
+    assert r.statuses[0].waiting is True  # not reset
+    assert r.statuses[0].wait_seconds > 0
+    assert len(r.completed) == 0

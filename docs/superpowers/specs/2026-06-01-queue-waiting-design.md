@@ -30,13 +30,17 @@ tracker → list[TrackedPerson]
 
 ## Waiting state machine (per track id) — this is #1
 
-Per person each frame we pick a **ground point** and an **in-zone** test:
-- **Ankle if visible:** if a COCO ankle keypoint (15/16) clears `kpt_thr`, the
-  ground point is the visible-ankle midpoint and `in_zone = zone.contains(it)` —
-  precise, immune to box padding (carts) and bottom-edge occlusion.
-- **Coverage fallback:** otherwise (feet occluded / no pose), ground point is the
-  box-bottom-center and `in_zone = zone.coverage(box) >= zone_coverage`, where
-  coverage is the fraction of the box inside the polygon (grid sample).
+Per person each frame we pick a **ground point** (for speed) and compute
+**in_zone** as an **OR** of two signals so a held position isn't lost when one
+drops out:
+- **Ankle:** if a COCO ankle keypoint (15/16) clears `kpt_thr`, `ankle_inside =
+  zone.contains(visible-ankle midpoint)` — precise, immune to box padding (carts)
+  and bottom-edge occlusion. The midpoint is also the ground point for speed.
+- **Coverage:** `covered = zone.coverage(box) >= zone_coverage`, the fraction of
+  the box inside the polygon (grid sample) — robust when feet leave frame / are
+  occluded. Ground point falls back to box-bottom-center when no ankle is visible.
+
+`in_zone = ankle_inside or covered`.
 
 Then `speed_bh_s = EMA(|ground - prev_ground| / dt / box_height)`; `slow =
 speed_bh_s < wait_speed`; `in_cond = in_zone and slow`.
