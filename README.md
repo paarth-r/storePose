@@ -53,7 +53,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
 | `--wait-speed`   | `0.15`  | Max speed (body-heights/sec) counted as "slow".   |
-| `--wait-enter-seconds` | `1.5` | In-zone+slow time before WAITING is declared.  |
+| `--wait-enter-frames`  | `5`   | Consecutive in-zone+slow frames before WAITING. |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--wait-log`     | —       | Append completed waits to this CSV.               |
 
@@ -81,10 +81,19 @@ uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log
 ```
 
 A person is "waiting" once their foot point stays inside the zone while moving
-slowly (`--wait-speed`, in body-heights/sec) for `--wait-enter-seconds`; they
-stop waiting after `--wait-exit-seconds` out of that condition or when their
-track is lost. The overlay shows the zone, a `WAIT n.n s` timer per person, and
-`in line: N`. The CSV rows are `id, entered_s, exited_s, wait_seconds`.
+slowly (`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default
+5) consecutive frames; they stop waiting after `--wait-exit-seconds` out of that
+condition or when their track is lost.
+
+Visual states:
+- **Joining** (candidate): an amber "sheer" fill rises over the box as a flood
+  animation, with a join `%`, while the 5 frames accrue.
+- **In line**: a translucent **green** overlay on the box plus a `WAIT n.n s`
+  timer; the header shows `in line: N`.
+
+Boxes are already Kalman-smoothed by the tracker (constant-velocity, low process
+noise), so in-line boxes are stable. The CSV rows are
+`id, entered_s, exited_s, wait_seconds`.
 
 Requires tracking (on by default) — waiting state is keyed by stable id.
 

@@ -17,7 +17,7 @@ class _WaitState:
     waiting: bool = False
     wait_seconds: float = 0.0
     entered_s: float = 0.0
-    in_streak: float = 0.0
+    in_frames: int = 0
     out_streak: float = 0.0
     speed_ema: float = 0.0
     prev_foot: tuple[float, float] | None = field(default=None)
@@ -32,22 +32,23 @@ class QueueAnalyzer:
     """Decides whether each tracked person is waiting in the zone.
 
     A person is *waiting* once their foot point stays inside the zone while
-    moving slowly (in body-heights/sec) for at least ``enter_seconds``; they
-    stop waiting after ``exit_seconds`` of failing that condition, or when their
-    track disappears. ``count`` is the number currently waiting; finished waits
-    are reported in :attr:`QueueResult.completed`.
+    moving slowly (in body-heights/sec) for at least ``enter_frames`` consecutive
+    frames; before that they are a *candidate* with a 0..1 inclusion ``progress``.
+    They stop waiting after ``exit_seconds`` of failing the condition, or when
+    their track disappears. ``count`` is the number currently waiting; finished
+    waits are reported in :attr:`QueueResult.completed`.
     """
 
     def __init__(
         self,
         zone: Zone,
         wait_speed: float = 0.15,
-        enter_seconds: float = 1.5,
+        enter_frames: int = 5,
         exit_seconds: float = 2.0,
     ):
         self.zone = zone
         self.wait_speed = wait_speed
-        self.enter_seconds = enter_seconds
+        self.enter_frames = max(1, enter_frames)
         self.exit_seconds = exit_seconds
         self._states: dict[int, _WaitState] = {}
         self._clock = 0.0
@@ -86,19 +87,23 @@ class QueueAnalyzer:
                         )
                         st.waiting = False
                         st.wait_seconds = 0.0
-                        st.in_streak = 0.0
+                        st.in_frames = 0
             else:
                 if in_cond:
-                    st.in_streak += dt
-                    if st.in_streak >= self.enter_seconds:
+                    st.in_frames += 1
+                    if st.in_frames >= self.enter_frames:
                         st.waiting = True
-                        st.entered_s = self._clock - st.in_streak
-                        st.wait_seconds = st.in_streak
+                        st.entered_s = self._clock
+                        st.wait_seconds = 0.0
                         st.out_streak = 0.0
                 else:
-                    st.in_streak = 0.0
+                    st.in_frames = 0
 
-            statuses.append(PersonStatus(person.id, st.waiting, st.wait_seconds))
+            candidate = not st.waiting and st.in_frames > 0
+            progress = 1.0 if st.waiting else min(st.in_frames / self.enter_frames, 1.0)
+            statuses.append(
+                PersonStatus(person.id, st.waiting, candidate, progress, st.wait_seconds)
+            )
 
         # finalize people whose track vanished this frame
         for pid in list(self._states):

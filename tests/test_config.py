@@ -96,7 +96,7 @@ def test_queue_defaults():
     assert c.zone is None
     assert c.define_zone is False
     assert c.wait_speed == 0.15
-    assert c.wait_enter_seconds == 1.5
+    assert c.wait_enter_frames == 5
     assert c.wait_exit_seconds == 2.0
     assert c.wait_log is None
 
@@ -104,20 +104,20 @@ def test_queue_defaults():
 def test_queue_flags():
     c = from_args([
         "--zone", "zones/sco.json", "--define-zone",
-        "--wait-speed", "0.2", "--wait-enter-seconds", "1.0",
+        "--wait-speed", "0.2", "--wait-enter-frames", "8",
         "--wait-exit-seconds", "3.0", "--wait-log", "waits.csv",
     ])
     assert c.zone == "zones/sco.json"
     assert c.define_zone is True
     assert c.wait_speed == 0.2
-    assert c.wait_enter_seconds == 1.0
+    assert c.wait_enter_frames == 8
     assert c.wait_exit_seconds == 3.0
     assert c.wait_log == "waits.csv"
 
 
 @pytest.mark.parametrize("kwargs", [
     {"wait_speed": 0.0},
-    {"wait_enter_seconds": -1.0},
+    {"wait_enter_frames": 0},
     {"wait_exit_seconds": -0.5},
 ])
 def test_queue_rejects_invalid(kwargs):

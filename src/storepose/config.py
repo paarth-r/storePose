@@ -33,7 +33,7 @@ class AppConfig:
         zone: Path to a queue-zone JSON; enables waiting detection when set.
         define_zone: Launch the interactive zone editor and exit.
         wait_speed: Max speed (body-heights/sec) to count as "slow".
-        wait_enter_seconds: In-zone+slow time before WAITING is declared.
+        wait_enter_frames: Consecutive in-zone+slow frames before WAITING.
         wait_exit_seconds: Out-of-condition time before WAITING ends.
         wait_log: Optional CSV path to append completed waits.
     """
@@ -56,7 +56,7 @@ class AppConfig:
     zone: str | None = None
     define_zone: bool = False
     wait_speed: float = 0.15
-    wait_enter_seconds: float = 1.5
+    wait_enter_frames: int = 5
     wait_exit_seconds: float = 2.0
     wait_log: str | None = None
 
@@ -83,10 +83,10 @@ class AppConfig:
             raise ValueError(f"smooth_beta must be >= 0, got {self.smooth_beta}")
         if self.wait_speed <= 0:
             raise ValueError(f"wait_speed must be > 0, got {self.wait_speed}")
-        for name in ("wait_enter_seconds", "wait_exit_seconds"):
-            value = getattr(self, name)
-            if value < 0:
-                raise ValueError(f"{name} must be >= 0, got {value}")
+        if self.wait_enter_frames < 1:
+            raise ValueError(f"wait_enter_frames must be >= 1, got {self.wait_enter_frames}")
+        if self.wait_exit_seconds < 0:
+            raise ValueError(f"wait_exit_seconds must be >= 0, got {self.wait_exit_seconds}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -189,8 +189,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Max speed in body-heights/sec to count as 'slow' (default: 0.15).",
     )
     parser.add_argument(
-        "--wait-enter-seconds", type=float, default=1.5,
-        help="In-zone+slow time before WAITING is declared (default: 1.5).",
+        "--wait-enter-frames", type=int, default=5,
+        help="Consecutive in-zone+slow frames before WAITING (default: 5).",
     )
     parser.add_argument(
         "--wait-exit-seconds", type=float, default=2.0,
@@ -225,7 +225,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         zone=args.zone,
         define_zone=args.define_zone,
         wait_speed=args.wait_speed,
-        wait_enter_seconds=args.wait_enter_seconds,
+        wait_enter_frames=args.wait_enter_frames,
         wait_exit_seconds=args.wait_exit_seconds,
         wait_log=args.wait_log,
     )

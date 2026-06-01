@@ -65,7 +65,10 @@ def test_annotate_queue_draws_zone_and_count():
     frame = _blank()
     person = TrackedPerson(id=1, box=np.array([20, 20, 60, 100], float),
                            keypoints=None, scores=None, coasting=False, color=(0, 255, 0))
-    result = QueueResult(statuses=[PersonStatus(1, True, 3.4)], count=1)
+    result = QueueResult(
+        statuses=[PersonStatus(id=1, waiting=True, candidate=False, progress=1.0, wait_seconds=3.4)],
+        count=1,
+    )
     zone = Zone([(0, 0), (120, 0), (120, 110), (0, 110)])
     out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
     assert out.shape == frame.shape
@@ -77,3 +80,20 @@ def test_annotate_queue_safe_without_zone():
     from storepose.queue.types import QueueResult
     out = annotate_queue(_blank(), [], QueueResult(statuses=[], count=0), None, AppConfig())
     assert out.shape == (120, 160, 3)
+
+
+def test_annotate_queue_candidate_fill_draws():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    person = TrackedPerson(id=7, box=np.array([20, 20, 60, 100], float),
+                           keypoints=None, scores=None, coasting=False, color=(255, 0, 0))
+    result = QueueResult(
+        statuses=[PersonStatus(id=7, waiting=False, candidate=True, progress=0.6, wait_seconds=0.0)],
+        count=0,
+    )
+    zone = Zone([(0, 0), (120, 0), (120, 110), (0, 110)])
+    out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
+    assert out.shape == frame.shape
+    assert not np.array_equal(out, frame)  # candidate fill drawn

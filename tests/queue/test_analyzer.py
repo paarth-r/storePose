@@ -15,7 +15,7 @@ def person(pid, box):
 
 
 def test_stationary_in_zone_becomes_waiting():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_seconds=1.0, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
     box = [40, 40, 60, 80]  # foot (50, 80) inside, height 40
     assert an.update([person(1, box)], 0.5).statuses[0].waiting is False
     r = an.update([person(1, box)], 0.5)  # in_streak reaches 1.0
@@ -24,7 +24,7 @@ def test_stationary_in_zone_becomes_waiting():
 
 
 def test_walkthrough_does_not_wait():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_seconds=1.0, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
     r = None
     for xc in (10, 40, 70, 100):  # +30 px/frame -> fast
         r = an.update([person(1, [xc, 40, xc + 20, 80])], 0.5)
@@ -33,7 +33,7 @@ def test_walkthrough_does_not_wait():
 
 
 def test_leaving_zone_ends_wait_and_emits_completed():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_seconds=1.0, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
     box = [40, 40, 60, 80]
     an.update([person(1, box)], 0.5)
     an.update([person(1, box)], 0.5)  # waiting now
@@ -47,10 +47,26 @@ def test_leaving_zone_ends_wait_and_emits_completed():
 
 
 def test_disappearance_finalizes_wait():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_seconds=1.0, exit_seconds=5.0)
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=5.0)
     box = [40, 40, 60, 80]
     an.update([person(1, box)], 0.5)
     an.update([person(1, box)], 0.5)  # waiting
     r = an.update([], 0.5)  # track id 1 vanished
     assert r.count == 0
     assert len(r.completed) == 1 and r.completed[0].id == 1
+
+
+def test_candidate_progress_then_inclusion():
+    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=5, exit_seconds=1.0)
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.1)  # frame 1
+    r2 = an.update([person(1, box)], 0.1)  # frame 2 -> 2/5
+    s = r2.statuses[0]
+    assert s.waiting is False and s.candidate is True
+    assert abs(s.progress - 0.4) < 1e-6
+    an.update([person(1, box)], 0.1)  # 3
+    an.update([person(1, box)], 0.1)  # 4
+    r5 = an.update([person(1, box)], 0.1)  # 5 -> waiting
+    assert r5.statuses[0].waiting is True
+    assert r5.statuses[0].candidate is False
+    assert r5.statuses[0].progress == 1.0

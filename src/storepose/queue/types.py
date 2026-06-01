@@ -11,12 +11,16 @@ class PersonStatus:
 
     Attributes:
         id: Track id.
-        waiting: True if the person is currently waiting in the zone.
+        waiting: True if the person is confirmed in line.
+        candidate: True if accumulating frames toward inclusion (not yet in line).
+        progress: Inclusion progress in ``[0, 1]`` (1.0 once waiting).
         wait_seconds: Accumulated waiting time so far (0 if not waiting).
     """
 
     id: int
     waiting: bool
+    candidate: bool
+    progress: float
     wait_seconds: float
 
 

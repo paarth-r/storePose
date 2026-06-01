@@ -35,12 +35,22 @@ Per person each frame: `foot = ((x1+x2)/2, y2)`; `in_zone = zone.contains(foot)`
 wait_speed`. Condition `in_cond = in_zone and slow`.
 
 ```
-NOT_WAITING ──(in_cond held ≥ enter_seconds)──▶ WAITING
+NOT_WAITING ──(in_cond)──▶ CANDIDATE (progress = in_frames / enter_frames)
+CANDIDATE   ──(in_frames ≥ enter_frames, default 5)──▶ WAITING
+CANDIDATE   ──(¬in_cond)──▶ NOT_WAITING  (in_frames resets to 0)
 WAITING ──(¬in_cond held ≥ exit_seconds, OR track id disappears)──▶ ended
 ```
 
-While WAITING, accumulate `wait_seconds` (includes the enter debounce). A
-monotonic clock (sum of `dt`) timestamps entry/exit.
+Inclusion is gated on **consecutive frames** (`enter_frames`, default 5), which
+also drives the candidate fill animation's `progress`. While WAITING, accumulate
+`wait_seconds` from inclusion; a monotonic clock (sum of `dt`) timestamps
+entry/exit. `PersonStatus` carries `waiting`, `candidate`, `progress`,
+`wait_seconds`.
+
+**Visualization:** candidate → amber "sheer" fill rising over the box
+proportional to `progress` (flood animation) + join `%`; waiting → translucent
+green overlay on the box + `WAIT n.n s`. Boxes are the tracker's Kalman-smoothed
+output (no second filter needed).
 
 - **#2 count** = number of present persons currently WAITING.
 - **#3 wait time** = `wait_seconds` when a person leaves WAITING → emitted in
