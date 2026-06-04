@@ -15,7 +15,7 @@ def person(pid, box):
 
 
 def test_stationary_in_zone_becomes_waiting():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)
     box = [40, 40, 60, 80]  # foot (50, 80) inside, height 40
     assert an.update([person(1, box)], 0.5).statuses[0].waiting is False
     r = an.update([person(1, box)], 0.5)  # in_streak reaches 1.0
@@ -23,17 +23,19 @@ def test_stationary_in_zone_becomes_waiting():
     assert r.count == 1
 
 
-def test_walkthrough_does_not_wait():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
+def test_moving_in_zone_still_counts_no_motion_gating():
+    # No motion gating: a person moving around inside the zone (e.g. fetching
+    # items / pushing a cart) still counts once in-zone for enter_frames.
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)
     r = None
-    for xc in (10, 40, 70, 100):  # +30 px/frame -> fast
+    for xc in (10, 40, 70, 100):  # moving, but all inside the zone
         r = an.update([person(1, [xc, 40, xc + 20, 80])], 0.5)
-    assert r.statuses[0].waiting is False
-    assert r.count == 0
+    assert r.statuses[0].waiting is True
+    assert r.count == 1
 
 
 def test_leaving_zone_ends_wait_and_emits_completed():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)
     box = [40, 40, 60, 80]
     an.update([person(1, box)], 0.5)
     an.update([person(1, box)], 0.5)  # waiting now
@@ -47,7 +49,7 @@ def test_leaving_zone_ends_wait_and_emits_completed():
 
 
 def test_disappearance_finalizes_wait():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=5.0)
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=5.0)
     box = [40, 40, 60, 80]
     an.update([person(1, box)], 0.5)
     an.update([person(1, box)], 0.5)  # waiting
@@ -57,7 +59,7 @@ def test_disappearance_finalizes_wait():
 
 
 def test_candidate_progress_then_inclusion():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=5, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, enter_frames=5, exit_seconds=1.0)
     box = [40, 40, 60, 80]
     an.update([person(1, box)], 0.1)  # frame 1
     r2 = an.update([person(1, box)], 0.1)  # frame 2 -> 2/5
@@ -87,7 +89,7 @@ def person_pose(pid, box, kpts, scores):
 
 def test_ankle_inside_counts_even_if_box_mostly_outside():
     # box is outside the zone, but the ankles are inside -> in zone via ankles
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0, kpt_thr=0.5)
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, kpt_thr=0.5)
     k, s = _kpts_with_ankles(50, 50, 60, 50)  # well inside ZONE (0..200)
     box = [300, 300, 360, 400]  # outside zone
     an.update([person_pose(1, box, k, s)], 0.5)
@@ -96,7 +98,7 @@ def test_ankle_inside_counts_even_if_box_mostly_outside():
 
 
 def test_occluded_ankles_fall_back_to_coverage():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5)
     k, s = _kpts_with_ankles(50, 50, 60, 50, score=0.1)  # ankles low confidence
     box = [40, 40, 120, 160]  # mostly inside ZONE -> coverage high
@@ -106,7 +108,7 @@ def test_occluded_ankles_fall_back_to_coverage():
 
 
 def test_occluded_ankles_box_outside_not_waiting():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5)
     k, s = _kpts_with_ankles(50, 50, 60, 50, score=0.1)
     box = [400, 400, 480, 560]  # outside zone
@@ -118,7 +120,7 @@ def test_occluded_ankles_box_outside_not_waiting():
 def test_ankle_outside_but_box_covered_stays_in_zone():
     # Ankle keypoints are confident but OUTSIDE the zone, yet the box is mostly
     # inside -> OR keeps the person in-zone (timer must not reset).
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5)
     k, s = _kpts_with_ankles(500, 500, 510, 500, score=0.9)  # outside ZONE (0..200)
     box = [40, 40, 120, 160]  # mostly inside ZONE -> coverage high
@@ -128,7 +130,7 @@ def test_ankle_outside_but_box_covered_stays_in_zone():
 
 
 def test_wait_not_reset_when_ankle_leaves_but_box_covered():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5)
     box = [40, 40, 120, 160]  # inside zone
     k_in, s_in = _kpts_with_ankles(80, 150, 90, 150, score=0.9)
@@ -146,7 +148,7 @@ def test_candidate_progress_not_reset_by_brief_ankle_dropout():
     # Box sits OUTSIDE the coverage zone, so in-zone depends only on the ankle.
     # The ankle flashes out for one frame; progress must hold (grace), so the
     # person still reaches inclusion.
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=3, exit_seconds=1.0,
+    an = QueueAnalyzer(ZONE, enter_frames=3, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5)
     box = [400, 400, 480, 560]  # outside ZONE -> coverage 0
     k_in, s_in = _kpts_with_ankles(50, 50, 60, 50, score=0.9)   # ankle inside zone
@@ -160,7 +162,7 @@ def test_candidate_progress_not_reset_by_brief_ankle_dropout():
 
 
 def test_candidate_resets_after_sustained_loss():
-    an = QueueAnalyzer(ZONE, wait_speed=0.15, enter_frames=3, exit_seconds=0.3,
+    an = QueueAnalyzer(ZONE, enter_frames=3, exit_seconds=0.3,
                        kpt_thr=0.5, coverage_thr=0.5)
     box = [400, 400, 480, 560]  # outside zone
     k_in, s_in = _kpts_with_ankles(50, 50, 60, 50, score=0.9)
@@ -179,7 +181,7 @@ def test_standing_person_triggers_via_foot_region_coverage():
     # ABOVE the strip, so whole-box coverage is < 0.5, but the foot region is
     # inside -> should count as in-zone with NO ankle keypoints.
     floor = Zone([(0, 120), (200, 120), (200, 200), (0, 200)])
-    an = QueueAnalyzer(floor, wait_speed=0.15, enter_frames=2, exit_seconds=1.0,
+    an = QueueAnalyzer(floor, enter_frames=2, exit_seconds=1.0,
                        kpt_thr=0.5, coverage_thr=0.5, foot_band=0.3)
     box = [40, 20, 120, 180]  # head at y=20 (above strip), feet at y=180 (inside)
     assert floor.coverage(box) < 0.5  # whole-box coverage would NOT trigger

@@ -45,8 +45,9 @@ drops out:
 
 `in_zone = ankle_inside or covered`.
 
-**Speed** is measured from the stable Kalman box-bottom (never the ankle), so an
-ankle flashing in/out can't create a fake speed spike that drops `in_cond`.
+**No motion gating.** `in_cond = in_zone`. People in line move around (fetching
+items, pushing carts hiding their ankles), so requiring low speed wrongly reset
+their timers; presence in the zone is what counts.
 
 **Grace:** a brief loss of `in_cond` does not reset progress. `out_streak`
 accumulates only while `in_cond` is false; a candidate's `in_frames` resets (and

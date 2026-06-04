@@ -52,8 +52,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
-| `--wait-speed`   | `0.15`  | Max speed (body-heights/sec) counted as "slow".   |
-| `--wait-enter-frames`  | `5`   | Consecutive in-zone+slow frames before WAITING. |
+| `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
 | `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
@@ -91,10 +90,11 @@ person's box is mostly torso/head that projects *above* a floor zone. The OR
 means a held position isn't lost when feet leave frame or an ankle drifts
 outside while the body is still in the zone — the wait timer keeps running.
 
-A person is "waiting" once that in-zone test holds while they move slowly
-(`--wait-speed`, in body-heights/sec) for `--wait-enter-frames` (default 5)
-consecutive frames; they stop after `--wait-exit-seconds` out of that condition
-or when their track is lost.
+A person is "waiting" once that in-zone test holds for `--wait-enter-frames`
+(default 5) consecutive frames; they stop after `--wait-exit-seconds` out of the
+zone or when their track is lost. There is **no motion gating** — people in line
+move around (fetching items, pushing carts), so presence in the zone is what
+counts, not how still they are.
 
 Visual states:
 - **Joining** (candidate): an amber "sheer" fill rises over the box as a flood

@@ -62,7 +62,7 @@ class Runner:
                     else:
                         zone = Zone.load(config.zone)
                         analyzer = QueueAnalyzer(
-                            zone, wait_speed=config.wait_speed,
+                            zone,
                             enter_frames=config.wait_enter_frames,
                             exit_seconds=config.wait_exit_seconds,
                             kpt_thr=config.kpt_thr,
