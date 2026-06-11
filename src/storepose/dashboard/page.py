@@ -61,6 +61,18 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
   font-variant-numeric:tabular-nums}
 .card.line .v{color:var(--navy)} .card.pos .v{color:var(--teal)} .card.tot .v{color:var(--ink)}
 
+.vs{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin-bottom:30px}
+.vs-tile{border-radius:16px;box-shadow:var(--shadow);padding:18px 22px;border:1px solid}
+.vs-tile .k{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.vs-tile .v{margin-top:6px;font-weight:800;font-size:2.3rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.vs-tile .sub{margin-top:2px;font-size:.74rem;font-weight:600;opacity:.7}
+.vs-tile.mash{background:#e9f7f0;border-color:#bfe6d4;color:#0e8f60}
+.vs-tile.other{background:#fdeaec;border-color:#f4cace;color:#cf2f3a;text-align:right}
+.vs-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:0 8px;color:var(--ink)}
+.vs-mid .delta{font-weight:800;font-size:1.5rem;font-variant-numeric:tabular-nums;color:#0e8f60}
+.vs-mid .sub{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
 .tabs{display:inline-flex;gap:3px;padding:4px;background:var(--hair2);border-radius:12px;margin-bottom:16px}
 .tabs button{border:0;background:transparent;color:var(--muted);font-family:inherit;font-weight:700;
   font-size:.86rem;padding:8px 17px;border-radius:9px;cursor:pointer;transition:.16s}
@@ -92,21 +104,29 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
   <button class="card tot"  data-tab="ws"><div class="k">Avg total time</div><div class="v" id="avgTotal">—</div></button>
 </section>
 
+<section class="vs" id="vs" hidden>
+  <div class="vs-tile mash"><div class="k">Mashgin checkout</div><div class="v" id="vsM">—</div><div class="sub">avg serve / person</div></div>
+  <div class="vs-mid"><div class="delta" id="vsDelta">—</div><div class="sub">Mashgin saves</div></div>
+  <div class="vs-tile other"><div class="k">Non-Mashgin</div><div class="v" id="vsO">—</div><div class="sub">avg serve / person</div></div>
+</section>
+
 <nav class="tabs">
   <button data-tab="occ" class="active">Occupancy</button>
   <button data-tab="ws">Wait &amp; Serve</button>
   <button data-tab="tp">Throughput</button>
+  <button data-tab="cx">Checkouts</button>
 </nav>
 <section>
   <div class="panel" data-panel="occ"><div class="chart" id="chart-occ"></div></div>
   <div class="panel" data-panel="ws" hidden><div class="chart" id="chart-ws"></div></div>
   <div class="panel" data-panel="tp" hidden><div class="chart" id="chart-tp"></div></div>
+  <div class="panel" data-panel="cx" hidden><div class="chart" id="chart-cx"></div></div>
 </section>
 <div class="foot" id="foot">served 0 · waiting for data…</div>
 </div>
 <script>
 const C={navy:"#16324f",teal:"#00bcd9",navySoft:"#8aa0b6",tealSoft:"#7fd7e6",
-  ink:"#13243a",mut:"#67788c",hair:"#e7ecf2",grid:"#eef2f6"};
+  ink:"#13243a",mut:"#67788c",hair:"#e7ecf2",grid:"#eef2f6",green:"#15a05f",red:"#e0353f"};
 const pad=n=>String(n).padStart(2,"0");
 const clk=s=>{s=Math.max(0,Math.round(s));return pad(Math.floor(s/60))+":"+pad(s%60)};
 const dur=s=>{if(s==null||!isFinite(s))return "—";if(s<60)return s.toFixed(1)+"s";return Math.floor(s/60)+"m "+pad(Math.round(s%60))+"s"};
@@ -174,6 +194,8 @@ charts.ws=makeChart("chart-ws",()=>({...baseOpt("s"),series:[
 charts.tp=makeChart("chart-tp",()=>({...baseOpt(""),legend:{show:false},series:[{
   name:"served/min",type:"bar",itemStyle:{color:C.teal,borderRadius:[3,3,0,0]},
   emphasis:{itemStyle:{color:C.navy}},data:[]}]}));
+charts.cx=makeChart("chart-cx",()=>({...baseOpt("s"),series:[
+  lineSeries("Mashgin",C.green,{fill:true}),lineSeries("Non-Mashgin",C.red,{fill:true})]}));
 window.addEventListener("resize",()=>Object.values(charts).forEach(c=>c.resize()));
 
 const zip=(t,v)=>t.map((x,i)=>[x,v[i]]);
@@ -200,6 +222,15 @@ async function poll(){
     charts.ws.setOption({series:[{data:zip(w.t,w.wait_ma)},{data:zip(w.t,w.serve_ma)}]});
     const p=d.throughput;
     charts.tp.setOption({series:[{data:zip(p.t,p.served_per_min)}]});
+    const ck=d.checkouts, vs=document.getElementById("vs");
+    if(ck && ck.other_n>0){vs.hidden=false;
+      document.getElementById("vsM").textContent=dur(ck.mashgin_avg);
+      document.getElementById("vsO").textContent=dur(ck.other_avg);
+      document.getElementById("vsDelta").textContent=dur(ck.delta);}
+    else{vs.hidden=true;}
+    const cs=ck?ck.series:null;
+    if(cs){charts.cx.setOption({series:[
+      {data:zip(cs.t_mashgin,cs.mashgin_ma)},{data:zip(cs.t_other,cs.other_ma)}]});}
   }catch(e){}
 }
 poll();setInterval(poll,1000);
