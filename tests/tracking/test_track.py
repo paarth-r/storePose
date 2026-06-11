@@ -72,6 +72,7 @@ def test_reactivate_reseats_motion_and_keeps_identity():
     assert t.time_since_update == 0
     assert t.confirmed is True
     assert np.allclose(t.box, [100, 100, 110, 120], atol=1.0)
+    assert t.hits == 2  # reactivation counts as a fresh match
 
 
 def test_update_descriptor_none_keeps_previous():

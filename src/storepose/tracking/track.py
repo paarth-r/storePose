@@ -53,7 +53,7 @@ class Track:
         self.keypoints: np.ndarray | None = None
         self.scores: np.ndarray | None = None
         self.descriptor: np.ndarray | None = (
-            None if descriptor is None else np.asarray(descriptor, np.float32)
+            None if descriptor is None else np.array(descriptor, dtype=np.float32)
         )
         self._ingest_pose(keypoints, scores, dt)
 
@@ -74,7 +74,7 @@ class Track:
     def _update_descriptor(self, descriptor) -> None:
         if descriptor is None:
             return
-        descriptor = np.asarray(descriptor, np.float32)
+        descriptor = np.array(descriptor, dtype=np.float32)
         if self.descriptor is None:
             self.descriptor = descriptor
         else:
