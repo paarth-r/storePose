@@ -13,14 +13,19 @@ def main(argv: list[str] | None = None) -> int:
     """Parse args, run the realtime pose loop, return a process exit code."""
     config = from_args(argv)
     if config.define_zone:
-        from storepose.queue.zone_editor import define_zone
-        path = define_zone(config.source, config.zone)
-        print(f"Run with: --zone {path}")
+        from storepose.queue.zone_editor import define_zones
+        saved = define_zones(config.source, config.zone, config.pos_zone)
+        parts = []
+        if "line" in saved:
+            parts.append(f"--zone {saved['line']}")
+        if "pos" in saved:
+            parts.append(f"--pos-zone {saved['pos']}")
+        print("Run with: " + " ".join(parts) if parts else "Nothing saved.")
         return 0
     if config.define_pos_zone:
-        from storepose.queue.zone_editor import define_zone, default_pos_zone_path
-        path = define_zone(config.source, config.pos_zone or default_pos_zone_path(config.source))
-        print(f"Run with: --pos-zone {path}")
+        from storepose.queue.zone_editor import define_zones
+        saved = define_zones(config.source, pos_path=config.pos_zone, pos_only=True)
+        print(f"Run with: --pos-zone {saved['pos']}" if "pos" in saved else "Nothing saved.")
         return 0
     try:
         Runner(config).run()
