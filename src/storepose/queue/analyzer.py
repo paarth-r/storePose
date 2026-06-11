@@ -9,6 +9,7 @@ from .types import CompletedWait, PersonStatus, QueueResult
 from .zone import Zone
 
 _L_ANKLE, _R_ANKLE = 15, 16  # COCO keypoint indices
+_VEL_ALPHA = 0.3             # EMA weight for the per-person velocity vector
 
 
 @dataclass
@@ -23,6 +24,8 @@ class _VisitState:
     out_streak: float = 0.0
     pos_frames: int = 0           # consecutive in-POS frames (waiting -> serving debounce)
     absent_seconds: float = 0.0   # time the track has been gone (re-id grace)
+    prev_center: tuple | None = None   # last box center (for the velocity EMA)
+    ema_v: tuple = (0.0, 0.0)          # EMA of the velocity vector (transit filter)
 
 
 class QueueAnalyzer:
@@ -52,10 +55,12 @@ class QueueAnalyzer:
         min_dwell_seconds: float = 0.0,
         reid_grace_seconds: float = 0.0,
         pos_enter_frames: int = 3,
+        transit_speed: float = 0.4,
     ):
         self.zone = zone
         self.pos_zone = pos_zone
         self.alt_zone = alt_zone
+        self.transit_speed = max(0.0, transit_speed)
         self.enter_frames = max(1, enter_frames)
         self.pos_enter_frames = max(1, pos_enter_frames)
         self.exit_seconds = exit_seconds
@@ -140,11 +145,29 @@ class QueueAnalyzer:
         for person in people:
             present.add(person.id)
             st = self._states.setdefault(person.id, _VisitState())
+            returned = st.absent_seconds > 0
             st.absent_seconds = 0.0
 
-            in_line = self._in_zone(person, self.zone)
-            in_pos = self.pos_zone is not None and self._in_zone(person, self.pos_zone)
-            in_alt = self.alt_zone is not None and self._in_zone(person, self.alt_zone)
+            # Velocity EMA (vector): a person walking *through* a zone keeps a
+            # large, directional ema_v; a shuffler's back-and-forth cancels to ~0.
+            box = person.box
+            cx = (float(box[0]) + float(box[2])) / 2.0
+            cy = (float(box[1]) + float(box[3])) / 2.0
+            box_h = max(1.0, float(box[3]) - float(box[1]))
+            if st.prev_center is not None and dt > 0 and not returned:
+                ivx = (cx - st.prev_center[0]) / dt
+                ivy = (cy - st.prev_center[1]) / dt
+                st.ema_v = ((1 - _VEL_ALPHA) * st.ema_v[0] + _VEL_ALPHA * ivx,
+                            (1 - _VEL_ALPHA) * st.ema_v[1] + _VEL_ALPHA * ivy)
+            st.prev_center = (cx, cy)
+            speed_norm = (st.ema_v[0] ** 2 + st.ema_v[1] ** 2) ** 0.5 / box_h
+            transiting = self.transit_speed > 0.0 and speed_norm > self.transit_speed
+
+            in_line = self._in_zone(person, self.zone) and not transiting
+            in_pos = (self.pos_zone is not None
+                      and self._in_zone(person, self.pos_zone) and not transiting)
+            in_alt = (self.alt_zone is not None
+                      and self._in_zone(person, self.alt_zone) and not transiting)
             if in_pos or in_alt:
                 in_line = False  # a checkout beats the line (mutually exclusive)
             which = "mashgin" if in_pos else ("other" if in_alt else None)

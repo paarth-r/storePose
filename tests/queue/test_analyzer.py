@@ -24,11 +24,11 @@ def test_stationary_in_zone_becomes_waiting():
 
 
 def test_moving_in_zone_still_counts_no_motion_gating():
-    # No motion gating: a person moving around inside the zone (e.g. fetching
-    # items / pushing a cart) still counts once in-zone for enter_frames.
+    # In-place movement (fetching items, shuffling) still counts — only sustained
+    # *directional* transit is gated. A person oscillating inside the zone counts.
     an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)
     r = None
-    for xc in (10, 40, 70, 100):  # moving, but all inside the zone
+    for xc in (40, 48, 40, 48, 40, 48):  # shuffling in place, all inside the zone
         r = an.update([person(1, [xc, 40, xc + 20, 80])], 0.5)
     assert r.statuses[0].waiting is True
     assert r.count == 1
@@ -103,7 +103,7 @@ def pos_person(pid, x):
 
 def test_waiting_then_serving_then_served():
     an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0,
-                       pos_enter_frames=1)
+                       pos_enter_frames=1, transit_speed=0.0)
     an.update([pos_person(1, 40)], 0.5)
     r = an.update([pos_person(1, 40)], 0.5)
     assert r.statuses[0].waiting is True and r.statuses[0].serving is False
@@ -179,7 +179,7 @@ def test_gap_past_grace_finalizes_with_outcome():
 
 def test_pos_entry_debounced():
     an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
-                       pos_enter_frames=3)
+                       pos_enter_frames=3, transit_speed=0.0)
     an.update([pos_person(1, 40)], 0.5)
     an.update([pos_person(1, 40)], 0.5)              # WAITING
     an.update([pos_person(1, 160)], 0.5)             # in POS frame 1
@@ -257,6 +257,45 @@ def test_checkout_priority_mashgin_over_non_mashgin():
     an.update([alt_person(1, 175)], 0.5)             # inside both -> Mashgin wins
     r = an.update([alt_person(1, 175)], 0.5)
     assert r.statuses[0].serving is True and r.statuses[0].serving_other is False
+
+
+def _box(x):
+    return [x - 10, 40, x + 10, 80]  # height 40, center (x, 60)
+
+
+def test_walkthrough_is_not_counted():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, transit_speed=0.4)
+    r = None
+    for x in (40, 70, 100, 130, 160):     # steady +30 px/frame across the zone
+        r = an.update([person(1, _box(x))], 0.5)
+    assert r.statuses[0].waiting is False
+    assert r.count == 0
+
+
+def test_stopping_in_zone_counts():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=3.0, transit_speed=0.4)
+    for x in (40, 80, 120):               # moving in
+        an.update([person(1, _box(x))], 0.5)
+    r = None
+    for _ in range(8):                    # then stopped at x=120
+        r = an.update([person(1, _box(120))], 0.5)
+    assert r.statuses[0].waiting is True
+
+
+def test_shuffler_in_zone_still_counts():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=3.0, transit_speed=0.4)
+    r = None
+    for x in [100, 108, 100, 108, 100, 108, 100, 108]:   # oscillating ±8 px
+        r = an.update([person(1, _box(x))], 0.5)
+    assert r.statuses[0].waiting is True
+
+
+def test_transit_speed_zero_disables_filter():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, transit_speed=0.0)
+    r = None
+    for x in (40, 70, 100, 130):          # moving, but filter off -> counts
+        r = an.update([person(1, _box(x))], 0.5)
+    assert r.statuses[0].waiting is True
 
 
 def test_single_zone_completed_wait_is_served_not_abandoned():
