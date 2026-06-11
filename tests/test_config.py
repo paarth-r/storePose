@@ -196,3 +196,13 @@ def test_pos_zone_defaults_none():
     cfg = from_args([])
     assert cfg.pos_zone is None
     assert cfg.define_pos_zone is False
+
+
+def test_pos_enter_frames_default_and_parse():
+    assert from_args([]).pos_enter_frames == 3
+    assert from_args(["--pos-enter-frames", "5"]).pos_enter_frames == 5
+
+
+def test_pos_enter_frames_must_be_positive():
+    with pytest.raises(ValueError):
+        AppConfig(pos_enter_frames=0)

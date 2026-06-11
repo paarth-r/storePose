@@ -85,6 +85,7 @@ class Runner:
                             # carry a vanished person's gap into their held state
                             # for the re-id window; a re-identified id resumes it
                             reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
+                            pos_enter_frames=config.pos_enter_frames,
                         )
                 elif config.pos_zone:
                     print("Note: --pos-zone needs --zone (the line zone); ignoring POS.")

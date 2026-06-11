@@ -21,6 +21,7 @@ class _VisitState:
     in_frames: int = 0
     in_seconds: float = 0.0
     out_streak: float = 0.0
+    pos_frames: int = 0           # consecutive in-POS frames (waiting -> serving debounce)
     absent_seconds: float = 0.0   # time the track has been gone (re-id grace)
 
 
@@ -49,10 +50,12 @@ class QueueAnalyzer:
         foot_band: float = 0.3,
         min_dwell_seconds: float = 0.0,
         reid_grace_seconds: float = 0.0,
+        pos_enter_frames: int = 3,
     ):
         self.zone = zone
         self.pos_zone = pos_zone
         self.enter_frames = max(1, enter_frames)
+        self.pos_enter_frames = max(1, pos_enter_frames)
         self.exit_seconds = exit_seconds
         self.min_dwell_seconds = max(0.0, min_dwell_seconds)
         self.reid_grace_seconds = max(0.0, reid_grace_seconds)
@@ -146,11 +149,15 @@ class QueueAnalyzer:
             elif st.state == "waiting":
                 st.waiting_seconds += dt
                 if in_pos:
-                    st.state = "serving"
-                    st.reached_pos = True
                     st.out_streak = 0.0
+                    st.pos_frames += 1
+                    if st.pos_frames >= self.pos_enter_frames:
+                        st.state = "serving"
+                        st.reached_pos = True
+                        st.pos_frames = 0
                 elif in_line:
                     st.out_streak = 0.0
+                    st.pos_frames = 0
                 else:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:

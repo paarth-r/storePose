@@ -102,7 +102,8 @@ def pos_person(pid, x):
 
 
 def test_waiting_then_serving_then_served():
-    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0)
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0,
+                       pos_enter_frames=1)
     an.update([pos_person(1, 40)], 0.5)
     r = an.update([pos_person(1, 40)], 0.5)
     assert r.statuses[0].waiting is True and r.statuses[0].serving is False
@@ -155,7 +156,7 @@ def test_gap_while_serving_adds_to_serving_seconds():
 
 def test_gap_while_waiting_attributed_to_waiting_even_if_returns_at_pos():
     an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
-                       reid_grace_seconds=3.0)
+                       reid_grace_seconds=3.0, pos_enter_frames=1)
     an.update([pos_person(1, 40)], 0.5)
     r = an.update([pos_person(1, 40)], 0.5)          # WAITING
     wait_before = r.statuses[0].wait_seconds
@@ -174,6 +175,30 @@ def test_gap_past_grace_finalizes_with_outcome():
     an.update([], 0.5)                               # absent 0.5 < 1.0
     r = an.update([], 0.5)                           # absent 1.0 >= grace -> finalize
     assert len(r.completed) == 1 and r.completed[0].outcome == "served"
+
+
+def test_pos_entry_debounced():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
+                       pos_enter_frames=3)
+    an.update([pos_person(1, 40)], 0.5)
+    an.update([pos_person(1, 40)], 0.5)              # WAITING
+    an.update([pos_person(1, 160)], 0.5)             # in POS frame 1
+    r = an.update([pos_person(1, 160)], 0.5)         # frame 2 (< 3) -> still waiting
+    assert r.statuses[0].waiting is True and r.statuses[0].serving is False
+    r2 = an.update([pos_person(1, 160)], 0.5)        # frame 3 -> SERVING
+    assert r2.statuses[0].serving is True
+
+
+def test_pos_graze_resets_and_stays_waiting():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
+                       pos_enter_frames=3)
+    an.update([pos_person(1, 40)], 0.5)
+    an.update([pos_person(1, 40)], 0.5)              # WAITING
+    an.update([pos_person(1, 160)], 0.5)             # 1 frame grazing POS
+    an.update([pos_person(1, 40)], 0.5)              # back in line -> pos_frames reset
+    an.update([pos_person(1, 160)], 0.5)             # 1
+    r = an.update([pos_person(1, 160)], 0.5)         # 2 (< 3) -> still waiting
+    assert r.statuses[0].waiting is True and r.statuses[0].serving is False
 
 
 def test_single_zone_completed_wait_is_served_not_abandoned():
