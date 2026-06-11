@@ -39,6 +39,8 @@ class AppConfig:
         smooth_beta: One-Euro beta (higher = more responsive to speed).
         zone: Path to a queue-zone JSON; enables waiting detection when set.
         define_zone: Launch the interactive zone editor and exit.
+        pos_zone: Path to a POS-zone JSON; enables waiting-vs-serving split.
+        define_pos_zone: Launch the editor for the POS zone and exit.
         wait_enter_frames: Consecutive in-zone frames before WAITING.
         wait_exit_seconds: Out-of-condition time before WAITING ends.
         zone_coverage: When ankles are occluded, min fraction of the foot region
@@ -77,6 +79,8 @@ class AppConfig:
     smooth_beta: float = 0.007
     zone: str | None = None
     define_zone: bool = False
+    pos_zone: str | None = None
+    define_pos_zone: bool = False
     wait_enter_frames: int = 5
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
@@ -255,6 +259,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive zone editor for --source and exit.",
     )
     parser.add_argument(
+        "--pos-zone", default=None, metavar="PATH",
+        help="POS-zone JSON to load; splits line time into waiting vs serving.",
+    )
+    parser.add_argument(
+        "--define-pos-zone", dest="define_pos_zone", action="store_true",
+        help="Launch the interactive editor for the POS zone and exit.",
+    )
+    parser.add_argument(
         "--wait-enter-frames", type=int, default=5,
         help="Consecutive in-zone+slow frames before WAITING (default: 5).",
     )
@@ -343,6 +355,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         smooth_beta=args.smooth_beta,
         zone=args.zone,
         define_zone=args.define_zone,
+        pos_zone=args.pos_zone,
+        define_pos_zone=args.define_pos_zone,
         wait_enter_frames=args.wait_enter_frames,
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,

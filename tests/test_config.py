@@ -183,3 +183,16 @@ def test_det_overlap_flag_parses():
 def test_det_overlap_must_be_in_range():
     with pytest.raises(ValueError):
         AppConfig(det_overlap=1.5)
+
+
+def test_pos_zone_flags():
+    cfg = from_args(["--pos-zone", "zones/p.json"])
+    assert cfg.pos_zone == "zones/p.json"
+    assert cfg.define_pos_zone is False
+    assert from_args(["--define-pos-zone"]).define_pos_zone is True
+
+
+def test_pos_zone_defaults_none():
+    cfg = from_args([])
+    assert cfg.pos_zone is None
+    assert cfg.define_pos_zone is False
