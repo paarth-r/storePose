@@ -49,7 +49,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 |-------|-----------|--------------|
 | Boxes + skeletons | always | Per-person box with a stable `ID n` and a colored COCO skeleton. Skeleton is hidden while a box is *coasting* (predicted through an occlusion). |
 | FPS | always (hide with `--no-fps`) | Rolling average framerate, top-left. |
-| Queue | `--zone PATH` | The zone polygon; an amber "joining" flood + `%` for candidates; a green fill + `WAIT n.n s` timer for people in line; an `in line: N` header count. |
+| Queue | `--zone PATH` | The zone polygon (orange); a rising fill + `%` for candidates and a full fill + `WAIT n.n s` for people in line, each in that person's **persistent id color**; an `in line: N` header count. |
 | Busy badge | `--busy` (needs `--zone`) | A `LOW / MEDIUM / HIGH` badge, the current metric value, and a countdown to the end of the active window. |
 
 ### Useful run flags
@@ -62,6 +62,9 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing / ankle test. |
 | `--no-fps` | — | Hide the FPS overlay. |
 | `--no-track` | — | Raw per-frame boxes, no stable IDs (disables queue/busy). |
+| `--no-reid` | — | Disable appearance re-id; a returning person gets a new id. |
+| `--reid-seconds` | `5.0` | How long a lost track stays re-attachable. |
+| `--reid-thr` | `0.6` | Appearance similarity floor for re-attach. |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
 | `--save PATH` | — | Write the annotated stream to an `.mp4`. |
 

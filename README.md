@@ -52,6 +52,9 @@ Press **`q`** or **Esc** in the window to quit.
 | `--min-hits`     | `3`     | Detections before a track is confirmed/drawn.     |
 | `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
 | `--max-overlap`  | `0.5`   | Drop a coasting ghost overlapping another box by more than this. |
+| `--no-reid`      | —       | Disable appearance re-id (returning person keeps their id). |
+| `--reid-seconds` | `5.0`   | How long a lost track stays re-attachable.        |
+| `--reid-thr`     | `0.6`   | Appearance similarity floor for re-attach (HSV histogram correlation). |
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
@@ -75,8 +78,11 @@ Press **`q`** or **Esc** in the window to quit.
 By default each person gets a stable `ID n` and a SORT-style tracker (Kalman +
 IoU) keeps that box alive through brief occlusions (coasting), while a One-Euro
 filter smooths the skeleton. A box that loses its detection is predicted forward
-for `--hold-seconds` (skeleton hidden while coasting), then dropped. Someone who
-fully leaves and returns gets a new id (no appearance re-identification).
+for `--hold-seconds` (skeleton hidden while coasting), then dropped. By default,
+appearance re-id (an HSV torso-color histogram) re-attaches a returning person to
+their original id within `--reid-seconds`; disable it with `--no-reid`. A
+genuinely new person still gets a new id. Each id keeps a persistent overlay
+color across re-attach.
 
 A/B the behavior with `--no-track` (raw per-frame boxes) and `--no-smooth`.
 
@@ -108,11 +114,11 @@ zone or when their track is lost. There is **no motion gating** — people in li
 move around (fetching items, pushing carts), so presence in the zone is what
 counts, not how still they are.
 
-Visual states:
-- **Joining** (candidate): an amber "sheer" fill rises over the box as a flood
+Visual states (drawn in each person's **persistent id color**, not a shared hue):
+- **Joining** (candidate): a "sheer" fill rises over the box as a flood
   animation, with a join `%`, while the 5 frames accrue.
-- **In line**: a translucent **green** overlay on the box plus a `WAIT n.n s`
-  timer; the header shows `in line: N`.
+- **In line**: a translucent overlay on the box plus a `WAIT n.n s` timer; the
+  header shows `in line: N`. The zone polygon stays orange.
 
 Boxes are already Kalman-smoothed by the tracker (constant-velocity, low process
 noise), so in-line boxes are stable. The CSV rows are
