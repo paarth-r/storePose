@@ -89,3 +89,11 @@ def test_checkout_stats_and_payload():
     assert s["delta"] == 25.0                                  # 40 - 15
     p = build_payload(([(0.0, 1, 0)], visits))
     assert p["checkouts"]["mashgin_n"] == 2 and "series" in p["checkouts"]
+
+
+def test_build_payload_debug_block():
+    rows = [{"id": 1, "state": "waiting", "speed": 0.1}]
+    p = build_payload(([(0.0, 1, 0)], []), debug=(7, rows))
+    assert p["debug"] == {"frame": 7, "rows": rows}
+    # default is an empty block, never missing
+    assert build_payload(([], []))["debug"] == {"frame": None, "rows": []}

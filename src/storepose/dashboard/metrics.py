@@ -116,9 +116,11 @@ def checkout_series(visits: list, window: float = 120.0) -> dict:
     }
 
 
-def build_payload(snapshot: tuple[list, list], busy: tuple = (None, [])) -> dict:
+def build_payload(snapshot: tuple[list, list], busy: tuple = (None, []),
+                  debug: tuple = (None, [])) -> dict:
     occ, visits = snapshot
     busy_current, busy_history = busy
+    debug_frame, debug_rows = debug
     now = occ[-1][0] if occ else 0.0
     checkouts = checkout_stats(visits)
     checkouts["series"] = checkout_series(visits)
@@ -130,4 +132,5 @@ def build_payload(snapshot: tuple[list, list], busy: tuple = (None, [])) -> dict
         "occupancy": occupancy_series(occ),
         "wait_serve": wait_serve_series(visits),
         "throughput": throughput_series(visits),
+        "debug": {"frame": debug_frame, "rows": debug_rows},
     }

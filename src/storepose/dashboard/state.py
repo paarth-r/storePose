@@ -26,6 +26,8 @@ class DashboardState:
         self._busy_current: tuple | None = None
         self._occ_interval = occ_interval
         self._last_occ_t: float | None = None
+        self._debug_frame: int | None = None       # frame index being viewed
+        self._debug_rows: list = []                 # per-person reasoning rows
 
     def observe(self, t: float, waiting: int, serving: int) -> None:
         with self._lock:
@@ -46,6 +48,11 @@ class DashboardState:
             self._busy_current = entry
             self._busy.append(entry)
 
+    def set_debug(self, frame: int, rows: list) -> None:
+        with self._lock:
+            self._debug_frame = int(frame)
+            self._debug_rows = list(rows)
+
     def snapshot(self) -> tuple[list, list]:
         with self._lock:
             return list(self._occ), list(self._visits)
@@ -53,3 +60,7 @@ class DashboardState:
     def busy_snapshot(self) -> tuple[tuple | None, list]:
         with self._lock:
             return self._busy_current, list(self._busy)
+
+    def debug_snapshot(self) -> tuple[int | None, list]:
+        with self._lock:
+            return self._debug_frame, list(self._debug_rows)

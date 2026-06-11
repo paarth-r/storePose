@@ -63,6 +63,8 @@ class AppConfig:
         busy_hysteresis: Cross-window deadband to suppress label flapping.
         dashboard: Serve the live web dashboard during the run.
         dashboard_port: Port for the dashboard HTTP server.
+        debug: Step through frames one at a time (scrub a rolling buffer) and push
+            per-person reasoning rows to the dashboard Debug tab.
     """
 
     source: int | str = 0
@@ -108,6 +110,7 @@ class AppConfig:
     busy_hysteresis: float = 0.0
     dashboard: bool = True
     dashboard_port: int = 8000
+    debug: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -372,6 +375,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dashboard-port", type=int, default=8000,
         help="Port for the live dashboard HTTP server (default: 8000).",
     )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Frame-by-frame step mode: scrub a rolling buffer and read each "
+             "person's classification in the dashboard Debug tab.",
+    )
     return parser
 
 
@@ -422,4 +430,5 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         busy_hysteresis=args.busy_hysteresis,
         dashboard=args.dashboard,
         dashboard_port=args.dashboard_port,
+        debug=args.debug,
     )

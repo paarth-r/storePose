@@ -232,6 +232,11 @@ def test_alt_zone_flags():
     assert from_args([]).alt_zone is None
 
 
+def test_debug_flag():
+    assert from_args([]).debug is False
+    assert from_args(["--debug"]).debug is True
+
+
 def test_transit_speed_default_parse_and_validation():
     assert from_args([]).transit_speed == 0.4
     assert from_args(["--transit-speed", "0"]).transit_speed == 0.0
