@@ -80,6 +80,9 @@ class Runner:
                             coverage_thr=config.zone_coverage,
                             foot_band=config.zone_foot_band,
                             min_dwell_seconds=config.wait_min_dwell,
+                            # pause a vanished person's wait for the re-id window
+                            # so a re-identified id resumes its timer
+                            reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
                         )
 
                 busy = None

@@ -58,6 +58,40 @@ def test_disappearance_finalizes_wait():
     assert len(r.completed) == 1 and r.completed[0].id == 1
 
 
+def test_reid_grace_resumes_timer_after_brief_disappearance():
+    # A waiting person whose track vanishes (lost into the re-id gallery) and is
+    # re-identified within the grace window must RESUME their saved wait timer,
+    # not reset it.
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=5.0, reid_grace_seconds=3.0)
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.5)
+    an.update([person(1, box)], 0.5)        # waiting
+    r = an.update([person(1, box)], 0.5)    # accruing wait
+    before = r.statuses[0].wait_seconds
+    assert before > 0
+    a1 = an.update([], 0.5)                  # vanished (within grace) -> paused
+    a2 = an.update([], 0.5)
+    assert a1.completed == [] and a2.completed == []
+    assert a1.count == 0                     # not shown while gone
+    r2 = an.update([person(1, box)], 0.5)    # re-id revives same id -> resume
+    assert len(r2.completed) == 0
+    assert r2.statuses[0].waiting is True
+    assert r2.statuses[0].wait_seconds >= before          # resumed, not reset
+    r3 = an.update([person(1, box)], 0.5)
+    assert r3.statuses[0].wait_seconds > r2.statuses[0].wait_seconds  # keeps climbing
+
+
+def test_reid_grace_finalizes_if_gone_past_window():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=5.0, reid_grace_seconds=1.0)
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.5)
+    an.update([person(1, box)], 0.5)        # waiting
+    r1 = an.update([], 0.5)                  # absent 0.5 < 1.0 -> paused
+    assert r1.completed == []
+    r2 = an.update([], 0.5)                  # absent 1.0 >= 1.0 -> finalize
+    assert len(r2.completed) == 1 and r2.completed[0].id == 1
+
+
 def test_candidate_progress_then_inclusion():
     an = QueueAnalyzer(ZONE, enter_frames=5, exit_seconds=1.0)
     box = [40, 40, 60, 80]

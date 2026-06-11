@@ -19,6 +19,7 @@ class _WaitState:
     in_frames: int = 0
     in_seconds: float = 0.0
     out_streak: float = 0.0
+    absent_seconds: float = 0.0  # time the track has been gone (re-id grace)
 
 
 class QueueAnalyzer:
@@ -31,10 +32,12 @@ class QueueAnalyzer:
     merely walks through the zone never accrues enough dwell to count, while
     people in line (who linger) do. There is still no *motion* gating — people in
     line move around (fetching items, carts), so presence over time is what
-    counts, not stillness. They stop waiting after
-    ``exit_seconds`` of being out of the zone, or when their track disappears.
-    ``count`` is the number currently waiting; finished waits are reported in
-    :attr:`QueueResult.completed`.
+    counts, not stillness. They stop waiting after ``exit_seconds`` of being out
+    of the zone. If their track simply *vanishes* (lost into the re-id gallery),
+    their wait is **paused**, not ended, for ``reid_grace_seconds``; a track that
+    returns with the same id within that window resumes its saved timer, while
+    one gone past it is finalized. ``count`` is the number currently waiting;
+    finished waits are reported in :attr:`QueueResult.completed`.
     """
 
     def __init__(
@@ -46,11 +49,13 @@ class QueueAnalyzer:
         coverage_thr: float = 0.5,
         foot_band: float = 0.3,
         min_dwell_seconds: float = 0.0,
+        reid_grace_seconds: float = 0.0,
     ):
         self.zone = zone
         self.enter_frames = max(1, enter_frames)
         self.exit_seconds = exit_seconds
         self.min_dwell_seconds = max(0.0, min_dwell_seconds)
+        self.reid_grace_seconds = max(0.0, reid_grace_seconds)
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
         self.foot_band = foot_band
@@ -98,6 +103,7 @@ class QueueAnalyzer:
         for person in people:
             present.add(person.id)
             st = self._states.setdefault(person.id, _WaitState())
+            st.absent_seconds = 0.0  # present again -> resume any paused wait
 
             in_cond = self._in_zone(person)
 
@@ -148,14 +154,19 @@ class QueueAnalyzer:
                 PersonStatus(person.id, st.waiting, candidate, progress, st.wait_seconds)
             )
 
-        # finalize people whose track vanished this frame
+        # people whose track vanished this frame: pause for the re-id grace
+        # window (their wait is saved and resumes if the same id returns), and
+        # only finalize once they have been gone past the window.
         for pid in list(self._states):
             if pid not in present:
-                st = self._states.pop(pid)
-                if st.waiting:
-                    completed.append(
-                        CompletedWait(pid, st.entered_s, self._clock, st.wait_seconds)
-                    )
+                st = self._states[pid]
+                st.absent_seconds += dt
+                if st.absent_seconds >= self.reid_grace_seconds:
+                    self._states.pop(pid)
+                    if st.waiting:
+                        completed.append(
+                            CompletedWait(pid, st.entered_s, self._clock, st.wait_seconds)
+                        )
 
         count = sum(1 for s in statuses if s.waiting)
         return QueueResult(statuses=statuses, count=count, completed=completed)
