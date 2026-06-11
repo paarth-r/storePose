@@ -66,24 +66,28 @@ class Runner:
                         reid_max_age=reid_max_age, reid_thr=config.reid_thr,
                     )
 
-                zone, analyzer = None, None
+                zone, analyzer, pos_zone = None, None, None
                 if config.zone:
                     if tracker is None:
                         print("Note: --zone needs tracking; ignoring (you passed --no-track).")
                     else:
                         zone = Zone.load(config.zone)
+                        pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
                         analyzer = QueueAnalyzer(
                             zone,
+                            pos_zone=pos_zone,
                             enter_frames=config.wait_enter_frames,
                             exit_seconds=config.wait_exit_seconds,
                             kpt_thr=config.kpt_thr,
                             coverage_thr=config.zone_coverage,
                             foot_band=config.zone_foot_band,
                             min_dwell_seconds=config.wait_min_dwell,
-                            # pause a vanished person's wait for the re-id window
-                            # so a re-identified id resumes its timer
+                            # carry a vanished person's gap into their held state
+                            # for the re-id window; a re-identified id resumes it
                             reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
                         )
+                elif config.pos_zone:
+                    print("Note: --pos-zone needs --zone (the line zone); ignoring POS.")
 
                 busy = None
                 if config.busy and analyzer is not None:
@@ -105,7 +109,10 @@ class Runner:
                 if config.wait_log and analyzer is not None:
                     log_file = stack.enter_context(open(config.wait_log, "w", newline=""))
                     wait_writer = csv.writer(log_file)
-                    wait_writer.writerow(["id", "entered_s", "exited_s", "wait_seconds"])
+                    wait_writer.writerow(
+                        ["id", "entered_s", "exited_s", "wait_seconds",
+                         "serving_seconds", "outcome"]
+                    )
                     print(f"Logging completed waits to {config.wait_log}")
 
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
@@ -122,18 +129,20 @@ class Runner:
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
-                            canvas = annotate_queue(canvas, people, qresult, zone, config)
+                            canvas = annotate_queue(canvas, people, qresult, zone, config, pos_zone=pos_zone)
                             if wait_writer is not None:
                                 for c in qresult.completed:
                                     wait_writer.writerow(
                                         [c.id, f"{c.entered_s:.2f}", f"{c.exited_s:.2f}",
-                                         f"{c.wait_seconds:.2f}"]
+                                         f"{c.wait_seconds:.2f}", f"{c.serving_seconds:.2f}",
+                                         c.outcome]
                                     )
                             if busy is not None:
                                 clock += dt
                                 busy.observe(clock, qresult.count, dt)
                                 for c in qresult.completed:
-                                    busy.add_wait(c)
+                                    if c.outcome == "served":
+                                        busy.add_wait(c)
                                 level, value = busy.estimate(clock)
                                 remaining = config.busy_window - (clock % config.busy_window)
                                 canvas = annotate_busy(canvas, level.label, value, remaining)
