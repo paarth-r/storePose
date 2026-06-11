@@ -49,3 +49,9 @@ def test_default_pos_zone_path():
     from storepose.queue.zone_editor import default_pos_zone_path
     assert default_pos_zone_path(0) == "zones/cam0_pos.json"
     assert default_pos_zone_path("videos/clip.mp4") == "zones/clip_pos.json"
+
+
+def test_default_alt_zone_path():
+    from storepose.queue.zone_editor import default_alt_zone_path
+    assert default_alt_zone_path(0) == "zones/cam0_alt.json"
+    assert default_alt_zone_path("videos/clip.mp4") == "zones/clip_alt.json"
