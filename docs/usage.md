@@ -72,6 +72,14 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 Full flag list: `uv run python main.py --help`, or the table in the
 [README](../README.md#flags).
 
+### Live dashboard
+
+Auto-starts at `http://127.0.0.1:8000/` (override `--dashboard-port`; disable with
+`--no-dashboard`) and opens in your browser. Three live charts — occupancy,
+wait/serve moving averages, and throughput — fed by the running pipeline. Most
+useful with `--zone` / `--pos-zone`. The timeline is video time for a file source,
+real time for a webcam.
+
 ---
 
 ## 3. Define a queue zone

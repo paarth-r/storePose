@@ -76,6 +76,8 @@ Press **`q`** or **Esc** in the window to quit.
 | `--busy-low-max` | `1.0`   | Upper bound of the LOW band (metric units). Calibrate. |
 | `--busy-medium-max` | `3.0` | Upper bound of the MEDIUM band (metric units). Calibrate. |
 | `--busy-hysteresis` | `0.0` | Cross-window deadband to suppress label flapping. |
+| `--no-dashboard`    | —     | Disable the live web dashboard.                   |
+| `--dashboard-port`  | `8000`| Port for the live dashboard server.               |
 
 ## Tracking & smoothing
 
@@ -194,6 +196,15 @@ See [`docs/problem-definition.md`](docs/problem-definition.md) for the precise
 definition of Low/Medium/High, the alternatives considered (occupancy vs.
 parties vs. wait-time), and the evaluation plan (ordinal metrics, ground-truth
 labeling, cross-store protocol).
+
+## Live dashboard
+
+Every run auto-starts a localhost web dashboard (no extra dependencies) and opens
+it in your browser, with three live charts: **occupancy** (in line / at POS with
+moving averages), **wait & serve** moving averages, and **throughput**
+(served/min). Disable with `--no-dashboard`; change the port with
+`--dashboard-port`. On a **file** source the timeline is video time; on a **webcam**
+it is real time.
 
 ## Performance
 
