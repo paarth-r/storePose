@@ -85,14 +85,18 @@ same zone file; move the camera and you re-draw it.
 uv run python main.py --define-zone --source videos/clip.mp4
 ```
 
-**Editor controls** (window title `define zone`):
+**Editor controls** (window title `define zones`). One session draws both the
+line and POS zones, and a zone may have several disjoint contours — a person
+counts as in-zone if inside **any** contour:
 
 | Action | Key / mouse |
 |--------|-------------|
+| Switch to line / POS contours | `1` / `2` |
 | Add a point | left-click |
+| Finish contour, start a new one | `n` (needs ≥ 3 points) |
 | Undo last point | `u` |
-| Clear all points | `c` |
-| Save & exit | `s` (needs ≥ 3 points) |
+| Clear everything | `c` |
+| Save (writes line + POS files) | `s` |
 | Quit without saving | `q` / Esc |
 
 Saved path defaults to `zones/<name>.json` — `zones/cam0.json` for a webcam

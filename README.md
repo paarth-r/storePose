@@ -95,12 +95,17 @@ Define a queue area once per (fixed) camera, then storePose flags each person
 **waiting** in it, shows a live **count**, and logs **per-person wait time**.
 
 ```bash
-# 1. draw the queue polygon on a frame (click points, 's' to save, 'q' to quit)
+# 1. draw zones: '1' for line contours, '2' for POS; 'n' new contour, 's' save, 'q' quit
 uv run python main.py --define-zone --source videos/clip.mp4
 
 # 2. run with the zone; optionally log completed waits to CSV
 uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log waits.csv
 ```
+
+The editor draws both zones in one session — **`1`** for line contours, **`2`**
+for POS — and either zone may be **several disjoint contours** (`n` starts a new
+one); a person counts as in-zone if inside **any** contour. `s` writes the line
+contours to `zones/<name>.json` and the POS contours to `zones/<name>_pos.json`.
 
 **In-zone test (OR of two signals):** a person counts as in-zone if **either**
 the visible-ankle midpoint is inside the polygon (precise, ignores box padding
