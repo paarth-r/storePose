@@ -18,3 +18,8 @@ verify_frame.jpg
 
 # Camera zone files (per-camera config)
 zones/
+
+# Per-camera generated run scripts + run outputs (reference gitignored zones/)
+run.sh
+viewscripts/
+runs/
