@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # view-setup.sh — one-shot setup for a camera/video:
-#   1. draw the line + POS zones (1 = line, 2 = POS; n = new contour; s = save; q = quit)
+#   1. draw the zones (1 = line, 2 = Mashgin POS, 3 = non-Mashgin; n = new contour; s = save; q = quit)
 #   2. write a reusable run script to viewscripts/<video>.sh
 #   3. launch the pipeline + dashboard (unless --no-run)
 #
@@ -32,13 +32,14 @@ if [[ ! -f "$VIDEO" && -f "videos/$VIDEO" ]]; then VIDEO="videos/$VIDEO"; fi
 STEM="$(basename "${VIDEO%.*}")"
 ZONE="zones/${STEM}.json"
 POS="zones/${STEM}_pos.json"
+ALT="zones/${STEM}_alt.json"
 
 echo "==> Zone setup for: $STEM"
-echo "    keys:  1 = draw line   2 = draw POS   n = new contour   u = undo   c = clear   s = save   q = quit"
+echo "    keys:  1 = line   2 = Mashgin POS   3 = non-Mashgin   n = new contour   u = undo   c = clear   s = save   q = quit"
 uv run python main.py --define-zone --source "$VIDEO"
 
 [[ -f "$ZONE" ]] || { echo "error: no line zone was saved ($ZONE) — re-run and press 's' after drawing." >&2; exit 1; }
-[[ -f "$POS"  ]] && echo "==> line + POS zones saved" || echo "==> line zone saved (no POS zone drawn)"
+echo "==> saved: line$( [[ -f "$POS" ]] && echo ' + Mashgin POS' )$( [[ -f "$ALT" ]] && echo ' + non-Mashgin' )"
 
 mkdir -p viewscripts runs
 SCRIPT="viewscripts/${STEM}.sh"
@@ -50,6 +51,7 @@ SCRIPT="viewscripts/${STEM}.sh"
   echo ''
   printf 'uv run python main.py --source %q --zone %q' "$VIDEO" "$ZONE"
   [[ -f "$POS" ]] && printf ' --pos-zone %q' "$POS"
+  [[ -f "$ALT" ]] && printf ' --alt-zone %q' "$ALT"
   printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "$@"\n' \
          "runs/${STEM}_waits.csv" "runs/${STEM}_busy.csv" "$PORT"
 } > "$SCRIPT"
