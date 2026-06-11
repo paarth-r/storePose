@@ -134,6 +134,8 @@ class QueueAnalyzer:
 
             in_line = self._in_zone(person, self.zone)
             in_pos = self.pos_zone is not None and self._in_zone(person, self.pos_zone)
+            if in_pos:
+                in_line = False  # POS and line are mutually exclusive; POS wins
 
             if st.state == "serving":
                 st.serving_seconds += dt

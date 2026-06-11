@@ -201,6 +201,22 @@ def test_pos_graze_resets_and_stays_waiting():
     assert r.statuses[0].waiting is True and r.statuses[0].serving is False
 
 
+def test_pos_priority_when_in_both_zones():
+    # Ankle inside the overlap of the line zone and POS zone: the person must be
+    # counted only as serving (POS), never simultaneously as waiting.
+    import numpy as np
+    pos = Zone([(100, 0), (200, 0), (200, 200), (100, 200)])
+    an = QueueAnalyzer(ZONE, pos_zone=pos, enter_frames=2, exit_seconds=2.0, pos_enter_frames=1)
+    k = np.zeros((17, 2)); k[15] = (150, 80); k[16] = (150, 80)  # ankle in both zones
+    p = TrackedPerson(id=1, box=np.array([140, 40, 160, 100], float),
+                      keypoints=k, scores=np.ones(17), coasting=False, color=(0, 255, 0))
+    an.update([p], 0.5)
+    r = an.update([p], 0.5)
+    assert r.statuses[0].serving is True
+    assert r.statuses[0].waiting is False
+    assert r.serving_count == 1 and r.count == 0
+
+
 def test_single_zone_completed_wait_is_served_not_abandoned():
     # No POS zone -> no abandonment concept -> completed waits are "served",
     # so single-zone --busy keeps receiving them.
