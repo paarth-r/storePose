@@ -59,6 +59,8 @@ Press **`q`** or **Esc** in the window to quit.
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
+| `--pos-zone`     | —       | POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
+| `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
@@ -126,6 +128,24 @@ noise), so in-line boxes are stable. The CSV rows are
 `id, entered_s, exited_s, wait_seconds`.
 
 Requires tracking (on by default) — waiting state is keyed by stable id.
+
+### Waiting vs at-POS
+
+Add a second **POS zone** (the register area) to split each visit into *waiting*
+(in the line zone, not yet at POS) and *serving* (at the POS):
+
+```bash
+uv run python main.py --define-pos-zone --source videos/clip.mp4   # draw the POS polygon
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --pos-zone zones/clip_pos.json --wait-log waits.csv
+```
+
+A person flows OUT → WAITING → SERVING → done; each frame's time is attributed to
+the state they are in, and time spent out of detection (re-identified within the
+re-id window) is credited to the state they held when lost. With a POS zone the
+wait-log columns become `id, entered_s, exited_s, wait_seconds, serving_seconds,
+outcome`, where `outcome` is `served` (reached POS) or `abandoned` (left the line
+first). The overlay draws the POS zone in azure and tags people `POS n.n s` while
+being served; the header shows `in line: N   at POS: M`.
 
 ## How busy is the line? (busy signal)
 

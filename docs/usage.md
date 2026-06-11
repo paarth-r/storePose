@@ -141,6 +141,8 @@ Tuning knobs:
 | `--wait-exit-seconds` | `2.0` | Out-of-zone time before a wait ends. |
 | `--wait-min-dwell` | `0.0` | Min in-zone dwell (s) before counting — the bystander filter. |
 | `--wait-log PATH` | — | Append completed waits as CSV. |
+| `--pos-zone PATH` | — | POS zone; splits line time into waiting vs serving (adds `serving_seconds,outcome` CSV columns). |
+| `--define-pos-zone` | — | Draw the POS polygon and exit. |
 
 ---
 
