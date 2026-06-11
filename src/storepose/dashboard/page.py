@@ -146,8 +146,8 @@ function baseOpt(unit){return{
   tooltip:{trigger:"axis",backgroundColor:"rgba(16,18,24,.95)",borderColor:C.hair,
     textStyle:{color:C.ink},axisPointer:{type:"line",lineStyle:{color:"rgba(255,255,255,.25)"}},
     formatter:p=>{let s=`<b>${clk(p[0].axisValue)}</b>`;p.forEach(x=>{s+=`<br>${x.marker}${x.seriesName}: <b>${(+x.value[1]).toFixed(unit==="s"?1:0)}${unit}</b>`;});return s;}},
-  xAxis:{type:"value",name:"time",nameTextStyle:{color:C.mut},min:"dataMin",
-    axisLabel:{color:C.mut,formatter:clk},axisLine:{lineStyle:{color:C.hair}},
+  xAxis:{type:"value",min:"dataMin",
+    axisLabel:{color:C.mut,formatter:clk,hideOverlap:true},axisLine:{lineStyle:{color:C.hair}},
     splitLine:{show:false}},
   yAxis:{type:"value",axisLabel:{color:C.mut},splitLine:{lineStyle:{color:"rgba(255,255,255,.05)"}}},
   dataZoom:[{type:"inside"},{type:"slider",height:16,bottom:24,borderColor:C.hair,
@@ -157,7 +157,7 @@ function baseOpt(unit){return{
 function area(color){return new echarts.graphic.LinearGradient(0,0,0,1,
   [{offset:0,color:color+"55"},{offset:1,color:color+"02"}]);}
 function lineSeries(name,color,{dashed=false,fill=false,end=true}={}){return{
-  name,type:"line",smooth:true,showSymbol:false,
+  name,type:"line",smooth:true,showSymbol:false,color,itemStyle:{color},
   lineStyle:{width:dashed?1.5:2.4,color,type:dashed?"dashed":"solid"},
   areaStyle:fill?{color:area(color)}:undefined,
   emphasis:{focus:"series"},
