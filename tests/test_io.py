@@ -43,3 +43,9 @@ def test_video_sink_creates_parent_dir(tmp_path):
     with VideoSink(out, fps=10) as sink:
         sink.write(np.zeros((48, 64, 3), np.uint8))
     assert os.path.exists(out)
+
+
+def test_default_pos_zone_path():
+    from storepose.queue.zone_editor import default_pos_zone_path
+    assert default_pos_zone_path(0) == "zones/cam0_pos.json"
+    assert default_pos_zone_path("videos/clip.mp4") == "zones/clip_pos.json"

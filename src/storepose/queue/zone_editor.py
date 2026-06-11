@@ -18,6 +18,12 @@ def default_zone_path(source: int | str) -> str:
     return str(Path("zones") / f"{name}.json")
 
 
+def default_pos_zone_path(source: int | str) -> str:
+    """Default ``zones/<name>_pos.json`` path for a POS zone."""
+    name = f"cam{source}" if isinstance(source, int) else Path(str(source)).stem
+    return str(Path("zones") / f"{name}_pos.json")
+
+
 def define_zone(source: int | str, out_path: str | None = None) -> str:
     """Open a frame from ``source`` and let the user click a polygon.
 

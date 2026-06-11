@@ -17,6 +17,11 @@ def main(argv: list[str] | None = None) -> int:
         path = define_zone(config.source, config.zone)
         print(f"Run with: --zone {path}")
         return 0
+    if config.define_pos_zone:
+        from storepose.queue.zone_editor import define_zone, default_pos_zone_path
+        path = define_zone(config.source, config.pos_zone or default_pos_zone_path(config.source))
+        print(f"Run with: --pos-zone {path}")
+        return 0
     try:
         Runner(config).run()
     except CameraOpenError as exc:
