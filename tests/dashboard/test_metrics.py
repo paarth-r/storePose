@@ -59,3 +59,21 @@ def test_summary_stats_empty():
     s = summary_stats([], [])
     assert s == {"in_line": 0, "at_pos": 0, "avg_line_s": 0.0,
                  "avg_pos_s": 0.0, "avg_total_s": 0.0, "served_count": 0}
+
+
+def test_busy_series():
+    from storepose.dashboard.metrics import busy_series
+    cur = (20.0, "High", 4.2)
+    hist = [(0.0, "Low", 0.5), (10.0, "Medium", 2.0), (20.0, "High", 4.2)]
+    b = busy_series(cur, hist)
+    assert b["current"] == {"level": "High", "value": 4.2}
+    assert b["t"] == [0.0, 10.0, 20.0]
+    assert b["level_idx"] == [0, 1, 2]
+    assert b["value"] == [0.5, 2.0, 4.2]
+
+
+def test_busy_series_empty_and_payload():
+    from storepose.dashboard.metrics import busy_series
+    assert busy_series(None, [])["current"]["level"] is None
+    p = build_payload(([(0.0, 1, 0)], []), ((0.0, "Low", 0.5), [(0.0, "Low", 0.5)]))
+    assert p["busy"]["current"]["level"] == "Low"

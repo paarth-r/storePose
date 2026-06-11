@@ -26,6 +26,12 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
   font-size:.74rem;letter-spacing:.14em;text-transform:uppercase}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:p 2s infinite}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.35}}
+.busy{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;
+  font-weight:800;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;border:1px solid}
+.busy::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.busy.low {color:#0e8f60;background:#e6f7f0;border-color:#bfe9d8}
+.busy.med {color:#b9740a;background:#fdf1de;border-color:#f3dcad}
+.busy.high{color:#cf2f3a;background:#fdeaec;border-color:#f6c9ce}
 
 .counters{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .counter{background:var(--surface);border:1px solid var(--hair);border-radius:16px;
@@ -70,7 +76,7 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
 <body><div class="wrap">
 <header>
   <div class="brand">store<i>Pose</i> · live</div>
-  <div class="live"><span class="dot"></span><span id="clock">connecting</span></div>
+  <div class="live"><span id="busy" class="busy" hidden></span><span class="dot"></span><span id="clock">connecting</span></div>
 </header>
 
 <section class="counters">
@@ -181,6 +187,11 @@ async function poll(){
     document.getElementById("avgTotal").textContent=dur(s.avg_total_s);
     document.getElementById("clock").textContent=clk(d.now)+" elapsed";
     document.getElementById("foot").textContent=`served ${s.served_count} · live`;
+    const bz=d.busy&&d.busy.current, be=document.getElementById("busy");
+    if(bz&&bz.level){be.hidden=false;
+      be.className="busy "+({Low:"low",Medium:"med",High:"high"}[bz.level]||"low");
+      be.textContent=`busy: ${bz.level} · ${(+bz.value).toFixed(1)}`;}
+    else{be.hidden=true;}
     const o=d.occupancy;
     charts.occ.setOption({series:[
       {data:zip(o.t,o.waiting)},{data:zip(o.t,o.serving)},

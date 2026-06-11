@@ -18,10 +18,12 @@ class DashboardState:
     """Bounded, lock-guarded occupancy samples + completed-visit events."""
 
     def __init__(self, occ_interval: float = 1.0, max_samples: int = 3600,
-                 max_visits: int = 5000):
+                 max_visits: int = 5000, max_busy: int = 4000):
         self._lock = threading.Lock()
         self._occ: deque = deque(maxlen=max_samples)      # (t, waiting, serving)
         self._visits: deque = deque(maxlen=max_visits)    # Visit
+        self._busy: deque = deque(maxlen=max_busy)        # (t, level, value)
+        self._busy_current: tuple | None = None
         self._occ_interval = occ_interval
         self._last_occ_t: float | None = None
 
@@ -38,6 +40,16 @@ class DashboardState:
                 Visit(float(t), float(wait_seconds), float(serving_seconds), str(outcome))
             )
 
+    def set_busy(self, t: float, level: str, value: float) -> None:
+        with self._lock:
+            entry = (float(t), str(level), float(value))
+            self._busy_current = entry
+            self._busy.append(entry)
+
     def snapshot(self) -> tuple[list, list]:
         with self._lock:
             return list(self._occ), list(self._visits)
+
+    def busy_snapshot(self) -> tuple[tuple | None, list]:
+        with self._lock:
+            return self._busy_current, list(self._busy)

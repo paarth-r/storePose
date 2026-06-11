@@ -26,7 +26,8 @@ def _make_handler(state: DashboardState):
             if self.path == "/" or self.path.startswith("/index"):
                 self._send(PAGE_HTML.encode("utf-8"), "text/html; charset=utf-8")
             elif self.path.startswith("/metrics"):
-                body = json.dumps(metrics.build_payload(state.snapshot())).encode("utf-8")
+                payload = metrics.build_payload(state.snapshot(), state.busy_snapshot())
+                body = json.dumps(payload).encode("utf-8")
                 self._send(body, "application/json")
             else:
                 self.send_response(404)

@@ -28,6 +28,7 @@ from .video_source import VideoSource
 WINDOW_NAME = "storePose"
 _QUIT_KEYS = {ord("q"), 27}  # 'q' or Esc
 _DEFAULT_FPS = 30.0
+_BUSY_REFRESH_SECONDS = 10.0  # how often the Low/Med/High busy label is recomputed
 
 
 class Runner:
@@ -135,6 +136,8 @@ class Runner:
                 base_dt = 1.0 / (source.fps or _DEFAULT_FPS)
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
                 prev = None
+                next_busy = 0.0          # next clock time to refresh the busy label
+                busy_label, busy_value = "—", 0.0
                 for frame in source:
                     if is_file:
                         dt = base_dt                       # file: video time
@@ -169,9 +172,14 @@ class Runner:
                                 for c in qresult.completed:
                                     if c.outcome == "served":
                                         busy.add_wait(c)
-                                level, value = busy.estimate(clock)
-                                remaining = config.busy_window - (clock % config.busy_window)
-                                canvas = annotate_busy(canvas, level.label, value, remaining)
+                                if clock >= next_busy:  # refresh the label every 10 s
+                                    level, busy_value = busy.estimate(clock)
+                                    busy_label = level.label
+                                    next_busy = clock + _BUSY_REFRESH_SECONDS
+                                    if dash_state is not None:
+                                        dash_state.set_busy(clock, busy_label, busy_value)
+                                canvas = annotate_busy(canvas, busy_label, busy_value,
+                                                       next_busy - clock)
                     else:
                         canvas = annotate(frame, result, config, fps)
 

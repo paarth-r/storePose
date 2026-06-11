@@ -70,12 +70,31 @@ def summary_stats(occ: list, visits: list) -> dict:
     }
 
 
-def build_payload(snapshot: tuple[list, list]) -> dict:
+_BUSY_IDX = {"Low": 0, "Medium": 1, "High": 2}
+
+
+def busy_series(current, history: list) -> dict:
+    """Current busy label/value plus its history as a 0/1/2 step series."""
+    if current:
+        cur = {"level": current[1], "value": current[2]}
+    else:
+        cur = {"level": None, "value": 0.0}
+    return {
+        "current": cur,
+        "t": [b[0] for b in history],
+        "level_idx": [_BUSY_IDX.get(b[1], 0) for b in history],
+        "value": [b[2] for b in history],
+    }
+
+
+def build_payload(snapshot: tuple[list, list], busy: tuple = (None, [])) -> dict:
     occ, visits = snapshot
+    busy_current, busy_history = busy
     now = occ[-1][0] if occ else 0.0
     return {
         "now": now,
         "summary": summary_stats(occ, visits),
+        "busy": busy_series(busy_current, busy_history),
         "occupancy": occupancy_series(occ),
         "wait_serve": wait_serve_series(visits),
         "throughput": throughput_series(visits),
