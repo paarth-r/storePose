@@ -70,16 +70,18 @@ class Runner:
                         reid_max_age=reid_max_age, reid_thr=config.reid_thr,
                     )
 
-                zone, analyzer, pos_zone = None, None, None
+                zone, analyzer, pos_zone, alt_zone = None, None, None, None
                 if config.zone:
                     if tracker is None:
                         print("Note: --zone needs tracking; ignoring (you passed --no-track).")
                     else:
                         zone = Zone.load(config.zone)
                         pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
+                        alt_zone = Zone.load(config.alt_zone) if config.alt_zone else None
                         analyzer = QueueAnalyzer(
                             zone,
                             pos_zone=pos_zone,
+                            alt_zone=alt_zone,
                             enter_frames=config.wait_enter_frames,
                             exit_seconds=config.wait_exit_seconds,
                             kpt_thr=config.kpt_thr,
@@ -91,8 +93,8 @@ class Runner:
                             reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
                             pos_enter_frames=config.pos_enter_frames,
                         )
-                elif config.pos_zone:
-                    print("Note: --pos-zone needs --zone (the line zone); ignoring POS.")
+                elif config.pos_zone or config.alt_zone:
+                    print("Note: --pos-zone/--alt-zone need --zone (the line zone); ignoring.")
 
                 busy = None
                 if config.busy and analyzer is not None:
@@ -154,7 +156,8 @@ class Runner:
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
-                            canvas = annotate_queue(canvas, people, qresult, zone, config, pos_zone=pos_zone)
+                            canvas = annotate_queue(canvas, people, qresult, zone, config,
+                                                    pos_zone=pos_zone, alt_zone=alt_zone)
                             if wait_writer is not None:
                                 for c in qresult.completed:
                                     wait_writer.writerow(
@@ -170,7 +173,7 @@ class Runner:
                             if busy is not None:
                                 busy.observe(clock, qresult.count, dt)
                                 for c in qresult.completed:
-                                    if c.outcome == "served":
+                                    if c.outcome in ("served", "served_other"):
                                         busy.add_wait(c)
                                 if clock >= next_busy:  # refresh the label every 10 s
                                     level, busy_value = busy.estimate(clock)
