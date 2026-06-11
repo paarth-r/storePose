@@ -83,6 +83,27 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
   box-shadow:var(--shadow);padding:12px 12px 6px}
 .chart{width:100%;height:430px}
 [hidden]{display:none!important}
+
+/* Debug tab */
+.dbg{padding:6px 8px 10px}
+.dbg-head{display:flex;align-items:baseline;gap:10px;margin:6px 4px 12px}
+.dbg-frame{font-weight:800;font-size:1.05rem;color:var(--navy);font-variant-numeric:tabular-nums}
+.dbg-sub{color:var(--muted);font-size:.78rem;font-weight:600}
+table.dbg-t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.dbg-t th{text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--hair)}
+table.dbg-t td{padding:9px 10px;border-bottom:1px solid var(--hair2);font-size:.9rem;font-weight:600}
+table.dbg-t tr:hover td{background:#f9fbfd}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:700;
+  letter-spacing:.02em}
+.pill.waiting{color:var(--navy);background:#e8eef5}
+.pill.mash{color:#0e8f60;background:#e6f7f0}
+.pill.reg{color:#cf2f3a;background:#fdeaec}
+.pill.transit{color:#b9740a;background:#fdf1de}
+.pill.cand{color:var(--teal);background:#e3f7fb}
+.pill.out{color:var(--muted);background:var(--hair2)}
+.flag{font-weight:800}.flag.on{color:var(--teal)}.flag.off{color:#c7d0da}
+.dbg-empty{padding:30px 12px;text-align:center;color:var(--muted);font-weight:600}
 .foot{margin-top:16px;color:var(--muted);font-size:.76rem;font-weight:500}
 </style></head>
 <body><div class="wrap">
@@ -115,12 +136,20 @@ header{display:flex;align-items:center;justify-content:space-between;margin-bott
   <button data-tab="ws">Wait &amp; Serve</button>
   <button data-tab="tp">Throughput</button>
   <button data-tab="cx">Checkouts</button>
+  <button data-tab="dbg">Debug</button>
 </nav>
 <section>
   <div class="panel" data-panel="occ"><div class="chart" id="chart-occ"></div></div>
   <div class="panel" data-panel="ws" hidden><div class="chart" id="chart-ws"></div></div>
   <div class="panel" data-panel="tp" hidden><div class="chart" id="chart-tp"></div></div>
   <div class="panel" data-panel="cx" hidden><div class="chart" id="chart-cx"></div></div>
+  <div class="panel" data-panel="dbg" hidden>
+    <div class="dbg">
+      <div class="dbg-head"><span class="dbg-frame" id="dbgFrame">frame —</span>
+        <span class="dbg-sub">per-person classification for the viewed frame</span></div>
+      <div id="dbgBody"></div>
+    </div>
+  </div>
 </section>
 <div class="foot" id="foot">served 0 · waiting for data…</div>
 </div>
@@ -152,7 +181,10 @@ function activate(tab){
   document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
   document.querySelectorAll("[data-panel]").forEach(p=>p.hidden=(p.dataset.panel!==tab));
   if(charts[tab])charts[tab].resize();
+  history.replaceState(null,"","#"+tab);
 }
+if(location.hash){const t=location.hash.slice(1);
+  if(document.querySelector(`.tabs button[data-tab="${t}"]`))activate(t);}
 
 function baseOpt(unit){return{
   backgroundColor:"transparent",
@@ -199,6 +231,35 @@ charts.cx=makeChart("chart-cx",()=>({...baseOpt("s"),series:[
 window.addEventListener("resize",()=>Object.values(charts).forEach(c=>c.resize()));
 
 const zip=(t,v)=>t.map((x,i)=>[x,v[i]]);
+
+function statePill(r){
+  if(r.transit)return '<span class="pill transit">transit</span>';
+  if(r.state==="serving-Mashgin")return '<span class="pill mash">Mashgin POS</span>';
+  if(r.state==="serving-REG")return '<span class="pill reg">non-Mashgin</span>';
+  if(r.state==="waiting")return '<span class="pill waiting">waiting</span>';
+  if(r.state&&r.state.indexOf("candidate")===0)return `<span class="pill cand">${r.state}</span>`;
+  return '<span class="pill out">out</span>';
+}
+const flag=on=>`<span class="flag ${on?"on":"off"}">${on?"●":"·"}</span>`;
+function renderDebug(dbg){
+  document.getElementById("dbgFrame").textContent=
+    dbg && dbg.frame!=null ? `frame ${dbg.frame}` : "frame —";
+  const body=document.getElementById("dbgBody");
+  const rows=(dbg&&dbg.rows)||[];
+  if(!rows.length){
+    body.innerHTML='<div class="dbg-empty">No people in frame.<br>'+
+      'Run with <b>--debug</b> to step frame-by-frame; this tab follows the viewed frame.</div>';
+    return;}
+  let h='<table class="dbg-t"><thead><tr>'+
+    '<th>ID</th><th>State</th><th>Wait</th><th>Serve</th><th>Speed</th>'+
+    '<th>Line</th><th>POS</th><th>REG</th></tr></thead><tbody>';
+  for(const r of rows){
+    h+=`<tr><td>#${r.id}</td><td>${statePill(r)}</td>`+
+       `<td>${dur(r.wait)}</td><td>${dur(r.serve)}</td>`+
+       `<td>${(+r.speed).toFixed(2)}</td>`+
+       `<td>${flag(r.line)}</td><td>${flag(r.pos)}</td><td>${flag(r.reg)}</td></tr>`;}
+  body.innerHTML=h+'</tbody></table>';
+}
 async function poll(){
   try{
     const d=await (await fetch("metrics")).json();
@@ -231,6 +292,7 @@ async function poll(){
     const cs=ck?ck.series:null;
     if(cs){charts.cx.setOption({series:[
       {data:zip(cs.t_mashgin,cs.mashgin_ma)},{data:zip(cs.t_other,cs.other_ma)}]});}
+    renderDebug(d.debug);
   }catch(e){}
 }
 poll();setInterval(poll,1000);
