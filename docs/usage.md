@@ -68,6 +68,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--reid-thr` | `0.6` | Appearance similarity floor for re-attach. |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
 | `--save PATH` | — | Write the annotated stream to an `.mp4`. |
+| `--debug` | — | Step through frames (scrub a rolling buffer); read each person's classification in the dashboard Debug tab. |
 
 Full flag list: `uv run python main.py --help`, or the table in the
 [README](../README.md#flags).
@@ -75,10 +76,35 @@ Full flag list: `uv run python main.py --help`, or the table in the
 ### Live dashboard
 
 Auto-starts at `http://127.0.0.1:8000/` (override `--dashboard-port`; disable with
-`--no-dashboard`) and opens in your browser. Three live charts — occupancy,
-wait/serve moving averages, and throughput — fed by the running pipeline. Most
-useful with `--zone` / `--pos-zone`. The timeline is video time for a file source,
-real time for a webcam.
+`--no-dashboard`) and opens in your browser. Live charts — occupancy, wait/serve
+moving averages, throughput, and the Mashgin-vs-non-Mashgin checkout comparison —
+fed by the running pipeline. A **Debug** tab lists each tracked person's
+classification (state, wait/serve timers, speed, line/POS/REG membership) for the
+current frame. Most useful with `--zone` / `--pos-zone`. The timeline is video time
+for a file source, real time for a webcam.
+
+### Frame-by-frame debug view (`--debug`)
+
+To verify correctness by eye, step through the video one frame at a time while the
+dashboard **Debug** tab shows why each person is classified the way they are:
+
+```bash
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json \
+    --pos-zone zones/clip_pos.json --debug
+```
+
+The pipeline only ever moves **forward**; `←` is review-only over a rolling
+300-frame buffer (older frames already processed). Controls in the video window:
+
+| Action | Key |
+|--------|-----|
+| Step one frame / advance the video | `→` or `Space` |
+| Review the previous (older) buffered frame | `←` |
+| Play / pause | `c` / `p` |
+| Quit | `q` / Esc |
+
+The Debug tab follows the **viewed** frame, so scrubbing back also rewinds the
+per-person table (the cumulative charts stay at the latest processed frame).
 
 ---
 
