@@ -220,6 +220,45 @@ def test_pos_priority_when_in_both_zones():
     assert r.serving_count == 1 and r.count == 0
 
 
+MPOS = Zone([(150, 0), (200, 0), (200, 200), (150, 200)])  # right = Mashgin
+ALT = Zone([(0, 0), (60, 0), (60, 200), (0, 200)])          # left = non-Mashgin
+
+
+def alt_person(pid, x):
+    return person(pid, [x - 10, 40, x + 10, 80])
+
+
+def test_non_mashgin_checkout_serves_other():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1)
+    an.update([alt_person(1, 30)], 0.5)
+    r = an.update([alt_person(1, 30)], 0.5)          # at the non-Mashgin checkout
+    assert r.statuses[0].serving_other is True and r.statuses[0].serving is False
+    assert r.serving_other_count == 1 and r.serving_count == 0
+    an.update([alt_person(1, 400)], 0.5)
+    r2 = an.update([alt_person(1, 400)], 0.5)         # leaves -> done
+    assert r2.completed[0].outcome == "served_other"
+    assert r2.completed[0].serving_seconds > 0
+
+
+def test_mashgin_checkout_serves_mashgin():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1)
+    an.update([alt_person(1, 175)], 0.5)
+    r = an.update([alt_person(1, 175)], 0.5)
+    assert r.statuses[0].serving is True and r.statuses[0].serving_other is False
+    assert r.serving_count == 1 and r.serving_other_count == 0
+
+
+def test_checkout_priority_mashgin_over_non_mashgin():
+    overlap_alt = Zone([(140, 0), (200, 0), (200, 200), (140, 200)])  # overlaps MPOS
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=overlap_alt, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1)
+    an.update([alt_person(1, 175)], 0.5)             # inside both -> Mashgin wins
+    r = an.update([alt_person(1, 175)], 0.5)
+    assert r.statuses[0].serving is True and r.statuses[0].serving_other is False
+
+
 def test_single_zone_completed_wait_is_served_not_abandoned():
     # No POS zone -> no abandonment concept -> completed waits are "served",
     # so single-zone --busy keeps receiving them.

@@ -17,7 +17,7 @@ class _VisitState:
     waiting_seconds: float = 0.0
     serving_seconds: float = 0.0
     entered_s: float = 0.0        # clock when the visit began (first waiting/serving)
-    reached_pos: bool = False
+    checkout: str | None = None   # "mashgin" | "other" — which checkout was reached
     in_frames: int = 0
     in_seconds: float = 0.0
     out_streak: float = 0.0
@@ -43,6 +43,7 @@ class QueueAnalyzer:
         self,
         zone: Zone,
         pos_zone: Zone | None = None,
+        alt_zone: Zone | None = None,
         enter_frames: int = 5,
         exit_seconds: float = 2.0,
         kpt_thr: float = 0.5,
@@ -54,6 +55,7 @@ class QueueAnalyzer:
     ):
         self.zone = zone
         self.pos_zone = pos_zone
+        self.alt_zone = alt_zone
         self.enter_frames = max(1, enter_frames)
         self.pos_enter_frames = max(1, pos_enter_frames)
         self.exit_seconds = exit_seconds
@@ -98,9 +100,15 @@ class QueueAnalyzer:
         return zone.coverage(self._foot_box(person.box)) >= self.coverage_thr
 
     def _finalize(self, pid: int, st: _VisitState, completed: list) -> None:
-        # Without a POS zone there is no abandonment concept: a finished wait is
-        # simply "served" (preserves single-zone busy/throughput behavior).
-        outcome = "served" if (st.reached_pos or self.pos_zone is None) else "abandoned"
+        # With no checkout zone there is no abandonment concept: a finished wait
+        # is simply "served" (preserves single-zone busy/throughput behavior).
+        no_checkout = self.pos_zone is None and self.alt_zone is None
+        if st.checkout == "mashgin" or no_checkout:
+            outcome = "served"
+        elif st.checkout == "other":
+            outcome = "served_other"
+        else:
+            outcome = "abandoned"
         completed.append(
             CompletedWait(
                 pid, st.entered_s, self._clock, st.waiting_seconds,
@@ -110,15 +118,17 @@ class QueueAnalyzer:
 
     def _status(self, pid: int, st: _VisitState) -> PersonStatus:
         waiting = st.state == "waiting"
-        serving = st.state == "serving"
+        serving_now = st.state == "serving"
+        serving = serving_now and st.checkout != "other"        # Mashgin (default)
+        serving_other = serving_now and st.checkout == "other"  # non-Mashgin
         candidate = st.state == "out" and st.in_frames > 0
         frame_progress = st.in_frames / self.enter_frames
         if self.min_dwell_seconds > 0:
             frame_progress = min(frame_progress, st.in_seconds / self.min_dwell_seconds)
-        progress = 1.0 if (waiting or serving) else min(frame_progress, 1.0)
+        progress = 1.0 if (waiting or serving_now) else min(frame_progress, 1.0)
         return PersonStatus(
             pid, waiting, candidate, progress, st.waiting_seconds,
-            serving, st.serving_seconds,
+            serving, st.serving_seconds, serving_other,
         )
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
@@ -134,13 +144,17 @@ class QueueAnalyzer:
 
             in_line = self._in_zone(person, self.zone)
             in_pos = self.pos_zone is not None and self._in_zone(person, self.pos_zone)
-            if in_pos:
-                in_line = False  # POS and line are mutually exclusive; POS wins
+            in_alt = self.alt_zone is not None and self._in_zone(person, self.alt_zone)
+            if in_pos or in_alt:
+                in_line = False  # a checkout beats the line (mutually exclusive)
+            which = "mashgin" if in_pos else ("other" if in_alt else None)
+            in_check = which is not None
 
             if st.state == "serving":
                 st.serving_seconds += dt
-                if in_pos:
+                if in_check:
                     st.out_streak = 0.0
+                    st.checkout = which
                 else:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:
@@ -150,12 +164,12 @@ class QueueAnalyzer:
                         continue
             elif st.state == "waiting":
                 st.waiting_seconds += dt
-                if in_pos:
+                if in_check:
                     st.out_streak = 0.0
                     st.pos_frames += 1
                     if st.pos_frames >= self.pos_enter_frames:
                         st.state = "serving"
-                        st.reached_pos = True
+                        st.checkout = which
                         st.pos_frames = 0
                 elif in_line:
                     st.out_streak = 0.0
@@ -168,7 +182,7 @@ class QueueAnalyzer:
                         statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0))
                         continue
             else:  # out
-                if in_line or in_pos:
+                if in_line or in_check:
                     st.out_streak = 0.0
                     st.in_frames += 1
                     st.in_seconds += dt
@@ -177,9 +191,9 @@ class QueueAnalyzer:
                         and st.in_seconds >= self.min_dwell_seconds
                     ):
                         st.entered_s = self._clock
-                        if in_pos:
+                        if in_check:
                             st.state = "serving"
-                            st.reached_pos = True
+                            st.checkout = which
                         else:
                             st.state = "waiting"
                 else:
@@ -189,12 +203,12 @@ class QueueAnalyzer:
                         st.in_seconds = 0.0
 
             status = self._status(person.id, st)
-            if in_pos and status.waiting:
-                # box is in POS: leave the line count instantly (the serving
-                # timer still rides out the pos_enter_frames debounce, so they
-                # are neither "in line" nor yet "at POS" during those frames).
+            if in_check and status.waiting:
+                # box is in a checkout: leave the line count instantly (the
+                # serving timer still rides out the pos_enter_frames debounce, so
+                # they are neither "in line" nor yet "at a checkout" meanwhile).
                 status = PersonStatus(person.id, False, False, status.progress,
-                                      status.wait_seconds, False, st.serving_seconds)
+                                      status.wait_seconds, False, st.serving_seconds, False)
             statuses.append(status)
 
         # vanished tracks: carry the gap forward into the held state while within
@@ -215,7 +229,8 @@ class QueueAnalyzer:
 
         count = sum(1 for s in statuses if s.waiting)
         serving_count = sum(1 for s in statuses if s.serving)
+        serving_other_count = sum(1 for s in statuses if s.serving_other)
         return QueueResult(
             statuses=statuses, count=count, serving_count=serving_count,
-            completed=completed,
+            serving_other_count=serving_other_count, completed=completed,
         )
