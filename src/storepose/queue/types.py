@@ -27,6 +27,7 @@ class PersonStatus:
     serving: bool = False
     serving_seconds: float = 0.0
     serving_other: bool = False  # serving at the non-Mashgin checkout
+    debug: dict | None = None    # per-person reasoning for the debug view
 
 
 @dataclass

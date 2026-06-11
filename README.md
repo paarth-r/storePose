@@ -81,6 +81,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--busy-hysteresis` | `0.0` | Cross-window deadband to suppress label flapping. |
 | `--no-dashboard`    | —     | Disable the live web dashboard.                   |
 | `--dashboard-port`  | `8000`| Port for the live dashboard server.               |
+| `--debug`           | —     | Step frame-by-frame (scrub a rolling buffer); per-person reasoning in the dashboard Debug tab. |
 
 ## Tracking & smoothing
 

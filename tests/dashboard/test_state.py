@@ -42,3 +42,14 @@ def test_busy_set_and_snapshot():
     cur, hist = s.busy_snapshot()
     assert cur == (5.0, "High", 4.2)
     assert hist == [(5.0, "High", 4.2)]
+
+
+def test_debug_set_and_snapshot():
+    s = DashboardState()
+    assert s.debug_snapshot() == (None, [])
+    rows = [{"id": 1, "state": "waiting"}]
+    s.set_debug(42, rows)
+    frame, got = s.debug_snapshot()
+    assert frame == 42 and got == rows
+    got.append({"id": 2})                 # snapshot is an independent copy
+    assert s.debug_snapshot()[1] == rows

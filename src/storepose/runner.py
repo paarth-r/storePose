@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import time
 import webbrowser
+from collections import deque
 from contextlib import ExitStack
 
 import cv2
@@ -30,12 +31,106 @@ _QUIT_KEYS = {ord("q"), 27}  # 'q' or Esc
 _DEFAULT_FPS = 30.0
 _BUSY_REFRESH_SECONDS = 10.0  # how often the Low/Med/High busy label is recomputed
 
+_DEBUG_BUFFER = 300                              # rolling frames kept for scrub-back
+# arrow keycodes vary by platform (mac / linux / windows); accept all three
+_RIGHT_KEYS = {63235, 65363, 2555904}
+_LEFT_KEYS = {63234, 65361, 2424832}
+
+
+def _person_state(s) -> str:
+    """One-word classification of a PersonStatus for the debug table."""
+    if s.serving:
+        return "serving-Mashgin"
+    if s.serving_other:
+        return "serving-REG"
+    if s.waiting:
+        return "waiting"
+    if s.candidate:
+        return f"candidate {int(round(s.progress * 100))}%"
+    return "out"
+
+
+def _debug_rows(statuses) -> list[dict]:
+    """Per-person reasoning rows for the dashboard Debug tab."""
+    rows = []
+    for s in statuses:
+        d = s.debug or {}
+        rows.append({
+            "id": s.id,
+            "state": _person_state(s),
+            "wait": round(s.wait_seconds, 2),
+            "serve": round(s.serving_seconds, 2),
+            "speed": d.get("speed", 0.0),
+            "line": bool(d.get("line", False)),
+            "pos": bool(d.get("pos", False)),
+            "reg": bool(d.get("reg", False)),
+            "transit": bool(d.get("transit", False)),
+        })
+    return rows
+
+
+def _scrub(view: int, delta: int, length: int) -> int:
+    """Clamp a frames-back view index into ``[0, length-1]`` (0 = newest)."""
+    if length <= 0:
+        return 0
+    return max(0, min(view + delta, length - 1))
+
+
+def _draw_debug_banner(img, text: str) -> None:
+    h, w = img.shape[:2]
+    cv2.rectangle(img, (0, 0), (w, 30), (24, 14, 8), -1)
+    cv2.putText(img, text, (10, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                (255, 255, 255), 1, cv2.LINE_AA)
+
 
 class Runner:
     """Owns the realtime display loop and its resources."""
 
     def __init__(self, config: AppConfig):
         self._config = config
+
+    def _scrub_loop(self, buffer, scrub, dash_state) -> str:
+        """Display the viewed buffer frame and read keys until the user advances
+        to a new source frame ("advance") or quits ("quit").
+
+        ``scrub`` holds ``view`` (frames back from newest; 0 = latest) and
+        ``playing``. ``←`` reviews older frames, ``→``/space steps toward the
+        newest and then advances the source; ``c``/``p`` play/pause; while playing
+        a key-timeout auto-advances. The Debug tab follows the viewed frame.
+        """
+        while True:
+            scrub["view"] = _scrub(scrub["view"], 0, len(buffer))
+            b_idx, jpeg, b_rows = buffer[-1 - scrub["view"]]
+            img = cv2.imdecode(jpeg, cv2.IMREAD_COLOR)
+            state = "PLAY" if scrub["playing"] else "PAUSED"
+            _draw_debug_banner(
+                img, f"DEBUG  frame {b_idx}  {state}  [{scrub['view']} back]  "
+                     f"<-/-> step  c play  p pause  q quit")
+            if dash_state is not None:
+                dash_state.set_debug(b_idx, b_rows)
+            cv2.imshow(WINDOW_NAME, img)
+
+            key = cv2.waitKeyEx(30 if scrub["playing"] else 0)
+            low = key & 0xFF
+            if low in _QUIT_KEYS:
+                return "quit"
+            if low == ord("c"):
+                scrub["playing"] = True
+                continue
+            if low == ord("p"):
+                scrub["playing"] = False
+                continue
+            if key in _LEFT_KEYS or low == ord("a"):
+                scrub["view"] = _scrub(scrub["view"], +1, len(buffer))
+                continue
+            advance = key in _RIGHT_KEYS or low in (ord(" "), ord("d"))
+            timeout = scrub["playing"] and key == -1
+            if advance or timeout:
+                if scrub["view"] > 0:
+                    scrub["view"] = _scrub(scrub["view"], -1, len(buffer))
+                    continue
+                return "advance"
+            # any other key while paused: just redraw
 
     def run(self) -> None:
         config = self._config
@@ -141,7 +236,12 @@ class Runner:
                 prev = None
                 next_busy = 0.0          # next clock time to refresh the busy label
                 busy_label, busy_value = "—", 0.0
+                frame_idx = -1
+                buffer: deque = deque(maxlen=_DEBUG_BUFFER)  # debug scrub-back ring
+                scrub = {"view": 0, "playing": False}        # debug loop state
                 for frame in source:
+                    frame_idx += 1
+                    rows: list[dict] = []
                     if is_file:
                         dt = base_dt                       # file: video time
                     else:
@@ -157,6 +257,7 @@ class Runner:
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
+                            rows = _debug_rows(qresult.statuses)
                             canvas = annotate_queue(canvas, people, qresult, zone, config,
                                                     pos_zone=pos_zone, alt_zone=alt_zone)
                             if wait_writer is not None:
@@ -192,9 +293,20 @@ class Runner:
 
                     if sink is not None:
                         sink.write(canvas)
-                    cv2.imshow(WINDOW_NAME, canvas)
-                    if cv2.waitKey(1) & 0xFF in _QUIT_KEYS:
-                        break
+
+                    if config.debug:
+                        ok, jpeg = cv2.imencode(".jpg", canvas)
+                        if ok:
+                            buffer.append((frame_idx, jpeg, rows))
+                        scrub["view"] = 0   # snap to newest after a real advance
+                        if self._scrub_loop(buffer, scrub, dash_state) == "quit":
+                            break
+                    else:
+                        if dash_state is not None:
+                            dash_state.set_debug(frame_idx, rows)
+                        cv2.imshow(WINDOW_NAME, canvas)
+                        if cv2.waitKey(1) & 0xFF in _QUIT_KEYS:
+                            break
                 if config.busy_log and busy is not None:
                     windows = busy.windows()
                     write_busy(config.busy_log, windows)
