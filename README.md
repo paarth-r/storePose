@@ -62,6 +62,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--pos-zone`     | —       | POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
 | `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
+| `--pos-enter-frames`   | `3`   | Consecutive in-POS frames before SERVING (debounces the POS edge). |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
 | `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
