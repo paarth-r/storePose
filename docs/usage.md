@@ -99,7 +99,7 @@ counts as in-zone if inside **any** contour:
 
 | Action | Key / mouse |
 |--------|-------------|
-| Switch to line / POS contours | `1` / `2` |
+| Switch to line / Mashgin POS / non-Mashgin contours | `1` / `2` / `3` |
 | Add a point | left-click |
 | Finish contour, start a new one | `n` (needs ≥ 3 points) |
 | Undo last point | `u` |
@@ -153,8 +153,10 @@ Tuning knobs:
 | `--wait-exit-seconds` | `2.0` | Out-of-zone time before a wait ends. |
 | `--wait-min-dwell` | `0.0` | Min in-zone dwell (s) before counting — the bystander filter. |
 | `--wait-log PATH` | — | Append completed waits as CSV. |
-| `--pos-zone PATH` | — | POS zone; splits line time into waiting vs serving (adds `serving_seconds,outcome` CSV columns). |
+| `--pos-zone PATH` | — | Mashgin POS zone; splits line time into waiting vs serving (adds `serving_seconds,outcome` CSV columns). |
 | `--define-pos-zone` | — | Draw the POS polygon and exit. |
+| `--alt-zone PATH` | — | Non-Mashgin checkout zone; the dashboard shows avg serve time at Mashgin (green) vs non-Mashgin (red). |
+| `--define-alt-zone` | — | Draw the non-Mashgin checkout polygon and exit. |
 
 ---
 

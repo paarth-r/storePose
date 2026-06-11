@@ -59,8 +59,10 @@ Press **`q`** or **Esc** in the window to quit.
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
-| `--pos-zone`     | —       | POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
+| `--pos-zone`     | —       | Mashgin POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
 | `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
+| `--alt-zone`     | —       | Non-Mashgin checkout zone; enables the Mashgin-vs-traditional comparison. |
+| `--define-alt-zone` | —    | Launch the editor for the non-Mashgin checkout and exit. |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
 | `--pos-enter-frames`   | `3`   | Consecutive in-POS frames before SERVING (debounces the POS edge). |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
@@ -98,7 +100,7 @@ Define a queue area once per (fixed) camera, then storePose flags each person
 **waiting** in it, shows a live **count**, and logs **per-person wait time**.
 
 ```bash
-# 1. draw zones: '1' for line contours, '2' for POS; 'n' new contour, 's' save, 'q' quit
+# 1. draw zones: '1' line, '2' Mashgin POS, '3' non-Mashgin; 'n' new contour, 's' save, 'q' quit
 uv run python main.py --define-zone --source videos/clip.mp4
 
 # 2. run with the zone; optionally log completed waits to CSV
