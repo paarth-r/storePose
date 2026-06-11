@@ -125,6 +125,35 @@ def _draw_zone(canvas: np.ndarray, zone: Zone, color: tuple[int, int, int]) -> N
         cv2.polylines(canvas, [pts], True, color, 2)
 
 
+def _draw_pos_panel(
+    canvas: np.ndarray, people: list[TrackedPerson], result: QueueResult
+) -> None:
+    """Bottom panel listing each person at the POS with their serving time.
+
+    Drawn only while at least one person is serving; hidden otherwise.
+    """
+    serving = [s for s in result.statuses if s.serving]
+    if not serving:
+        return
+    h, w = canvas.shape[:2]
+    scale = max(1.0, w / 960.0)
+    color_by_id = {p.id: p.color for p in people}
+    fs = 0.6 * scale
+    thick = max(1, round(2 * scale))
+    line_h = int(round(26 * scale))
+    pad = int(round(8 * scale))
+    panel_h = pad * 2 + line_h * len(serving)
+    y0 = h - panel_h
+    overlay = canvas.copy()
+    cv2.rectangle(overlay, (0, y0), (w, h), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.55, canvas, 0.45, 0, canvas)
+    for i, s in enumerate(serving):
+        col = color_by_id.get(s.id, (255, 255, 255))
+        y = y0 + pad + line_h * i + int(round(18 * scale))
+        cv2.putText(canvas, f"AT POS  -  ID {s.id}: {s.serving_seconds:0.1f}s",
+                    (pad, y), cv2.FONT_HERSHEY_SIMPLEX, fs, col, thick, cv2.LINE_AA)
+
+
 def annotate_queue(
     canvas: np.ndarray,
     people: list[TrackedPerson],
@@ -185,6 +214,7 @@ def annotate_queue(
     header = f"in line: {result.count}   at POS: {result.serving_count}"
     cv2.putText(canvas, header, (10, 52),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, ZONE_COLOR, 2, cv2.LINE_AA)
+    _draw_pos_panel(canvas, people, result)
     return canvas
 
 

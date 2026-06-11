@@ -192,3 +192,33 @@ def test_annotate_queue_draws_all_contours():
                          zone, AppConfig())
     assert out[5, 5].sum() > 0
     assert out[90, 130].sum() > 0
+
+
+def _pos_setup(serving):
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    person = TrackedPerson(id=3, box=np.array([10, 10, 30, 38], float),
+                           keypoints=None, scores=None, coasting=False, color=(255, 0, 0))
+    if serving:
+        st = PersonStatus(id=3, waiting=False, candidate=False, progress=1.0,
+                          wait_seconds=0.0, serving=True, serving_seconds=4.2)
+        res = QueueResult(statuses=[st], count=0, serving_count=1)
+    else:
+        st = PersonStatus(id=3, waiting=True, candidate=False, progress=1.0, wait_seconds=1.0)
+        res = QueueResult(statuses=[st], count=1, serving_count=0)
+    zone = Zone([(0, 0), (40, 0), (40, 40), (0, 40)])  # top-left only
+    return person, res, zone
+
+
+def test_pos_panel_drawn_when_serving():
+    from storepose.drawing import annotate_queue
+    person, res, zone = _pos_setup(serving=True)
+    out = annotate_queue(_blank().copy(), [person], res, zone, AppConfig())
+    assert out[95:120, :, :].sum() > 0  # panel text near the bottom
+
+
+def test_pos_panel_absent_when_nobody_serving():
+    from storepose.drawing import annotate_queue
+    person, res, zone = _pos_setup(serving=False)
+    out = annotate_queue(_blank().copy(), [person], res, zone, AppConfig())
+    assert out[95:120, :, :].sum() == 0  # nothing at the bottom
