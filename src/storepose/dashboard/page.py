@@ -148,18 +148,21 @@ function baseOpt(unit){return{
     textStyle:{color:C.mut},dataBackground:{lineStyle:{color:"#d7dee6"},areaStyle:{color:"#eef2f6"}},
     selectedDataBackground:{lineStyle:{color:C.teal},areaStyle:{color:"rgba(0,188,217,.12)"}}}],
 };}
-function lineSeries(name,color,{dashed=false,fill=false,end=true}={}){return{
-  name,type:"line",smooth:true,showSymbol:false,color,itemStyle:{color},
-  lineStyle:{width:dashed?1.5:2.6,color,type:dashed?"dashed":"solid"},
+function lineSeries(name,color,{dashed=false,fill=false,end=true,step=false}={}){return{
+  name,type:"line",smooth:!step,step:step?"end":false,showSymbol:false,color,itemStyle:{color},
+  lineStyle:{width:dashed?1.4:3,color,type:dashed?"dashed":"solid"},
   areaStyle:fill?{color:color+"14",opacity:1}:undefined,
   emphasis:{focus:"series"},
   endLabel:end?{show:true,color,fontWeight:700,formatter:o=>` ${(+o.value[1]).toFixed(1)}`}:undefined,
   data:[]};}
 function makeChart(id,build){const c=echarts.init(document.getElementById(id),null,{renderer:"canvas"});
   c.setOption(build());return c;}
+// raw counts: faint dashed STEP lines; moving averages: solid bold lines (on top)
 charts.occ=makeChart("chart-occ",()=>({...baseOpt(""),series:[
-  lineSeries("in line",C.navy,{fill:true}),lineSeries("at POS",C.teal,{fill:true}),
-  lineSeries("in line avg",C.navySoft,{dashed:true,end:false}),lineSeries("at POS avg",C.tealSoft,{dashed:true,end:false})]}));
+  lineSeries("in line (raw)",C.navySoft,{dashed:true,step:true,end:false}),
+  lineSeries("at POS (raw)",C.tealSoft,{dashed:true,step:true,end:false}),
+  lineSeries("in line",C.navy,{end:true}),
+  lineSeries("at POS",C.teal,{end:true})]}));
 charts.ws=makeChart("chart-ws",()=>({...baseOpt("s"),series:[
   lineSeries("wait (avg)",C.navy,{fill:true}),lineSeries("serve (avg)",C.teal,{fill:true})]}));
 charts.tp=makeChart("chart-tp",()=>({...baseOpt(""),legend:{show:false},series:[{
