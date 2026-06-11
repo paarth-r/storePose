@@ -168,3 +168,18 @@ def test_reid_thr_must_be_in_range():
     import pytest
     with pytest.raises(ValueError):
         AppConfig(reid_thr=2.0)
+
+
+def test_det_conf_and_overlap_defaults():
+    cfg = from_args([])
+    assert cfg.det_conf == 0.7
+    assert cfg.det_overlap == 0.8
+
+
+def test_det_overlap_flag_parses():
+    assert from_args(["--det-overlap", "0.9"]).det_overlap == 0.9
+
+
+def test_det_overlap_must_be_in_range():
+    with pytest.raises(ValueError):
+        AppConfig(det_overlap=1.5)

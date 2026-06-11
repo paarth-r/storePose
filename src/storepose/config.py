@@ -19,6 +19,8 @@ class AppConfig:
         source: Webcam index (int) or a path to a video file (str).
         mode: rtmlib model mode — one of ``MODES``.
         det_conf: Person-detection score threshold in ``[0, 1]``.
+        det_overlap: Drop a detection box more than this fraction *contained*
+            within a larger box (duplicate-on-one-person suppression), in ``[0, 1]``.
         kpt_thr: Per-keypoint confidence threshold for drawing, in ``[0, 1]``.
         device: Compute device — ``"cpu"`` or ``"mps"`` (CoreML).
         show_fps: Whether to overlay a rolling FPS counter.
@@ -56,7 +58,8 @@ class AppConfig:
 
     source: int | str = 0
     mode: str = "balanced"
-    det_conf: float = 0.95
+    det_conf: float = 0.7
+    det_overlap: float = 0.8
     kpt_thr: float = 0.5
     device: str = "mps"
     show_fps: bool = True
@@ -94,7 +97,7 @@ class AppConfig:
             raise ValueError(f"mode must be one of {MODES}, got {self.mode!r}")
         if self.device not in DEVICES:
             raise ValueError(f"device must be one of {DEVICES}, got {self.device!r}")
-        for name in ("det_conf", "kpt_thr"):
+        for name in ("det_conf", "det_overlap", "kpt_thr"):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {value}")
@@ -164,8 +167,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--det-conf",
         type=float,
-        default=0.95,
-        help="Person detection confidence threshold (default: 0.95).",
+        default=0.7,
+        help="Person detection confidence threshold (default: 0.7).",
+    )
+    parser.add_argument(
+        "--det-overlap",
+        type=float,
+        default=0.8,
+        help="Drop a detection box more than this fraction contained within a "
+             "larger one (duplicate-on-one-person suppression; default: 0.8).",
     )
     parser.add_argument(
         "--kpt-thr",
@@ -315,6 +325,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         source=args.source,
         mode=args.mode,
         det_conf=args.det_conf,
+        det_overlap=args.det_overlap,
         kpt_thr=args.kpt_thr,
         device=args.device,
         show_fps=args.show_fps,

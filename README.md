@@ -43,7 +43,8 @@ Press **`q`** or **Esc** in the window to quit.
 | `--source`    | `0`        | Webcam index, or path to a video file.             |
 | `--save`      | —          | Write annotated output to this .mp4 path.          |
 | `--mode`      | `balanced` | `lightweight` \| `balanced` \| `performance`.      |
-| `--det-conf`  | `0.95`     | Person-detection confidence threshold.             |
+| `--det-conf`  | `0.7`      | Person-detection confidence threshold.             |
+| `--det-overlap` | `0.8`    | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
 | `--kpt-thr`   | `0.5`      | Keypoint confidence threshold for drawing.         |
 | `--device`    | `mps`      | `mps` (CoreML) or `cpu`.                           |
 | `--no-fps`    | —          | Hide the FPS overlay.                              |
