@@ -92,6 +92,104 @@ def test_reid_grace_finalizes_if_gone_past_window():
     assert len(r2.completed) == 1 and r2.completed[0].id == 1
 
 
+# A POS zone occupying the right half; the line ZONE is the full (0,0)-(200,200).
+POS = Zone([(120, 0), (200, 0), (200, 200), (120, 200)])
+
+
+def pos_person(pid, x):
+    # foot center at (x, 80); x>=120 is "at POS", x<120 is "waiting region"
+    return person(pid, [x - 10, 40, x + 10, 80])
+
+
+def test_waiting_then_serving_then_served():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0)
+    an.update([pos_person(1, 40)], 0.5)
+    r = an.update([pos_person(1, 40)], 0.5)
+    assert r.statuses[0].waiting is True and r.statuses[0].serving is False
+    an.update([pos_person(1, 40)], 0.5)              # accruing waiting
+    r2 = an.update([pos_person(1, 160)], 0.5)        # step into POS -> SERVING
+    assert r2.statuses[0].serving is True
+    assert r2.serving_count == 1 and r2.count == 0
+    an.update([pos_person(1, 160)], 0.5)             # accruing serving
+    an.update([pos_person(1, 400)], 0.5)             # leave POS
+    r3 = an.update([pos_person(1, 400)], 0.5)        # >= exit_seconds -> SERVED
+    assert len(r3.completed) == 1
+    c = r3.completed[0]
+    assert c.outcome == "served" and c.wait_seconds > 0 and c.serving_seconds > 0
+
+
+def test_waiting_then_abandoned_before_pos():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0)
+    an.update([pos_person(1, 40)], 0.5)
+    an.update([pos_person(1, 40)], 0.5)              # WAITING
+    an.update([pos_person(1, 400)], 0.5)             # out of line
+    r = an.update([pos_person(1, 400)], 0.5)         # out >= exit_seconds -> ABANDONED
+    assert len(r.completed) == 1
+    assert r.completed[0].outcome == "abandoned"
+    assert r.completed[0].serving_seconds == 0.0
+
+
+def test_walkup_straight_to_pos_has_no_waiting():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=1.0)
+    an.update([pos_person(1, 160)], 0.5)             # directly at POS
+    r = an.update([pos_person(1, 160)], 0.5)         # 2 frames -> SERVING
+    assert r.statuses[0].serving is True
+    an.update([pos_person(1, 400)], 0.5)
+    r2 = an.update([pos_person(1, 400)], 0.5)        # leave -> SERVED
+    assert r2.completed[0].outcome == "served"
+    assert r2.completed[0].wait_seconds == 0.0
+
+
+def test_gap_while_serving_adds_to_serving_seconds():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
+                       reid_grace_seconds=3.0)
+    an.update([pos_person(1, 160)], 0.5)
+    r = an.update([pos_person(1, 160)], 0.5)         # SERVING
+    before = r.statuses[0].serving_seconds
+    an.update([], 0.5)                               # vanished (within grace)
+    an.update([], 0.5)
+    r2 = an.update([pos_person(1, 160)], 0.5)        # re-id -> resume serving
+    assert r2.statuses[0].serving is True
+    assert r2.statuses[0].serving_seconds >= before + 1.0
+
+
+def test_gap_while_waiting_attributed_to_waiting_even_if_returns_at_pos():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
+                       reid_grace_seconds=3.0)
+    an.update([pos_person(1, 40)], 0.5)
+    r = an.update([pos_person(1, 40)], 0.5)          # WAITING
+    wait_before = r.statuses[0].wait_seconds
+    an.update([], 0.5)                               # vanished while waiting
+    an.update([], 0.5)
+    r2 = an.update([pos_person(1, 160)], 0.5)        # returns at POS
+    assert r2.statuses[0].wait_seconds >= wait_before + 1.0
+    assert r2.statuses[0].serving is True
+
+
+def test_gap_past_grace_finalizes_with_outcome():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=2, exit_seconds=5.0,
+                       reid_grace_seconds=1.0)
+    an.update([pos_person(1, 160)], 0.5)
+    an.update([pos_person(1, 160)], 0.5)             # SERVING (reached POS)
+    an.update([], 0.5)                               # absent 0.5 < 1.0
+    r = an.update([], 0.5)                           # absent 1.0 >= grace -> finalize
+    assert len(r.completed) == 1 and r.completed[0].outcome == "served"
+
+
+def test_single_zone_completed_wait_is_served_not_abandoned():
+    # No POS zone -> no abandonment concept -> completed waits are "served",
+    # so single-zone --busy keeps receiving them.
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.5)
+    an.update([person(1, box)], 0.5)  # waiting
+    out = [400, 40, 420, 80]
+    an.update([person(1, out)], 0.5)
+    r = an.update([person(1, out)], 0.5)  # leaves -> completed
+    assert len(r.completed) == 1
+    assert r.completed[0].outcome == "served"
+
+
 def test_candidate_progress_then_inclusion():
     an = QueueAnalyzer(ZONE, enter_frames=5, exit_seconds=1.0)
     box = [40, 40, 60, 80]
