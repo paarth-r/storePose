@@ -1,4 +1,4 @@
-"""Polygon queue zone with point-in-zone test and JSON persistence."""
+"""Polygon zone (one or more contours) with point/coverage tests + JSON."""
 
 from __future__ import annotations
 
@@ -9,28 +9,50 @@ import cv2
 import numpy as np
 
 
-class Zone:
-    """A polygon region of interest in image coordinates.
+def _is_nested(seq) -> bool:
+    """True if ``seq`` is a list of contours (vs a flat list of points)."""
+    return bool(seq) and isinstance(seq[0][0], (list, tuple, np.ndarray))
 
-    ``contains`` reports whether a point falls inside (or on) the polygon. A
-    zone with fewer than 3 points contains nothing.
+
+class Zone:
+    """One or more polygon contours in image coordinates.
+
+    ``contains`` and ``coverage`` test membership against the **union** of the
+    contours. A contour with fewer than 3 points contributes nothing. Construct
+    with a flat list of points for a single contour (back-compatible) or with
+    :meth:`from_polygons` for several.
     """
 
-    def __init__(self, points: list[tuple[int, int]]):
-        self.points: list[tuple[int, int]] = [(int(x), int(y)) for x, y in points]
-        self._poly = np.array(self.points, dtype=np.int32).reshape(-1, 1, 2)
+    def __init__(self, points_or_polygons):
+        polys = points_or_polygons or []
+        if polys and not _is_nested(polys):
+            polys = [polys]  # a flat list of points is one contour
+        self.polygons: list[list[tuple[int, int]]] = [
+            [(int(x), int(y)) for x, y in poly] for poly in polys
+        ]
+        self._polys = [
+            np.array(poly, dtype=np.int32).reshape(-1, 1, 2)
+            for poly in self.polygons
+            if len(poly) >= 3
+        ]
+
+    @classmethod
+    def from_polygons(cls, polygons) -> "Zone":
+        return cls(list(polygons))
+
+    @property
+    def points(self) -> list[tuple[int, int]]:
+        """The first contour (back-compat; ``[]`` when empty)."""
+        return self.polygons[0] if self.polygons else []
 
     def contains(self, point: tuple[float, float]) -> bool:
-        """True if ``point`` is inside or on the polygon boundary."""
-        if len(self.points) < 3:
-            return False
-        inside = cv2.pointPolygonTest(self._poly, (float(point[0]), float(point[1])), False)
-        return inside >= 0
+        """True if ``point`` is inside or on any contour."""
+        pt = (float(point[0]), float(point[1]))
+        return any(cv2.pointPolygonTest(poly, pt, False) >= 0 for poly in self._polys)
 
     def coverage(self, box, grid: int = 7) -> float:
-        """Fraction of ``box`` (xyxy) inside the polygon, via a ``grid``x``grid``
-        sample of points across the box. 1.0 = fully inside, 0.0 = fully out."""
-        if len(self.points) < 3:
+        """Fraction of ``box`` (xyxy) inside any contour, via a grid sample."""
+        if not self._polys:
             return 0.0
         x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
         if x2 <= x1 or y2 <= y1:
@@ -40,16 +62,21 @@ class Zone:
             px = x1 + (x2 - x1) * (i + 0.5) / grid
             for j in range(grid):
                 py = y1 + (y2 - y1) * (j + 0.5) / grid
-                if cv2.pointPolygonTest(self._poly, (px, py), False) >= 0:
+                if any(cv2.pointPolygonTest(poly, (px, py), False) >= 0
+                       for poly in self._polys):
                     inside += 1
         return inside / (grid * grid)
 
     def to_dict(self) -> dict:
-        return {"points": [list(p) for p in self.points]}
+        return {"polygons": [[list(p) for p in poly] for poly in self.polygons]}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Zone":
-        return cls([tuple(p) for p in data["points"]])
+        if "polygons" in data:
+            return cls.from_polygons(
+                [[tuple(p) for p in poly] for poly in data["polygons"]]
+            )
+        return cls([tuple(p) for p in data["points"]])  # legacy single-contour
 
     def save(self, path: str) -> None:
         p = Path(path)

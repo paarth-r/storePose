@@ -97,3 +97,122 @@ def test_keeps_coasting_track_that_overlaps_nobody():
     c = _FakeTrack([100, 0, 140, 80], coasting=True)  # separate, still predicted
     kept = suppress_coasting_duplicates([a, c], max_overlap=0.5)
     assert len(kept) == 2
+
+
+class _ColorStub:
+    """Appearance descriptor = BGR pixel at the box center of the frame.
+
+    Lets tests bind identity to a painted color, exercising the real frame
+    plumbing. Similarity is exact-match (1.0 / 0.0).
+    """
+    def extract(self, frame, box, keypoints, scores):
+        cx = int((box[0] + box[2]) / 2.0); cy = int((box[1] + box[3]) / 2.0)
+        h, w = frame.shape[:2]
+        cx = min(max(cx, 0), w - 1); cy = min(max(cy, 0), h - 1)
+        px = frame[cy, cx]
+        return None if int(px.sum()) == 0 else px.astype(np.float32)
+
+    def similarity(self, a, b):
+        return 1.0 if np.array_equal(a, b) else 0.0
+
+
+def _frame(boxes_colors, size=400):
+    f = np.zeros((size, size, 3), np.uint8)
+    for (x1, y1, x2, y2), color in boxes_colors:
+        f[int(y1):int(y2), int(x1):int(x2)] = color
+    return f
+
+
+def _reid_tracker(max_age=3, reid_max_age=50):
+    return MultiObjectTracker(
+        max_age=max_age, min_hits=1, iou_thr=0.3, smooth=False,
+        appearance=_ColorStub(), reid=True, reid_max_age=reid_max_age, reid_thr=0.5,
+    )
+
+
+def test_reattach_same_appearance_revives_id():
+    tr = _reid_tracker()
+    box = [100, 100, 140, 180]
+    red = (0, 0, 220)
+    out = tr.update(make_result([box]), 1 / 30, _frame([(box, red)]))
+    assert out[0].id == 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(5):                       # age out past max_age -> gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, red)]))
+    assert len(out2) == 1 and out2[0].id == 0   # same id revived
+
+
+def test_reattach_different_appearance_gets_new_id():
+    tr = _reid_tracker()
+    box = [100, 100, 140, 180]
+    tr.update(make_result([box]), 1 / 30, _frame([(box, (0, 0, 220))]))  # red, id 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(5):
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, (0, 220, 0))]))  # green
+    assert out2[0].id == 1                       # different person -> new id
+
+
+def test_reattach_past_ttl_gets_new_id():
+    tr = _reid_tracker(max_age=2, reid_max_age=2)
+    box = [100, 100, 140, 180]; red = (0, 0, 220)
+    tr.update(make_result([box]), 1 / 30, _frame([(box, red)]))   # id 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(8):                            # past max_age AND reid TTL
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, red)]))
+    assert out2[0].id == 1                        # gallery expired -> new id
+
+
+def test_occluded_person_reattaches_without_swapping_neighbor():
+    tr = _reid_tracker()
+    a = [40, 100, 80, 180]; b = [300, 100, 340, 180]
+    red, green = (0, 0, 220), (0, 220, 0)
+    out = tr.update(make_result([a, b]), 1 / 30, _frame([(a, red), (b, green)]))
+    assert len(out) == 2
+    # A occluded for several frames; B stays
+    for _ in range(5):
+        tr.update(make_result([b]), 1 / 30, _frame([(b, green)]))
+    a_back = [45, 105, 85, 185]
+    out2 = tr.update(make_result([a_back, b]), 1 / 30, _frame([(a_back, red), (b, green)]))
+    assert len(out2) == 2 and len({p.id for p in out2}) == 2   # two distinct ids, no merge
+
+
+def test_reid_disabled_returns_new_id_on_reappearance():
+    tr = MultiObjectTracker(max_age=2, min_hits=1, iou_thr=0.3, smooth=False)  # reid off
+    box = [100, 100, 140, 180]
+    tr.update(make_result([box]), 1 / 30)        # no frame arg
+    for _ in range(4):
+        tr.update(make_result([]), 1 / 30)
+    out = tr.update(make_result([[110, 105, 150, 185]]), 1 / 30)
+    assert out[0].id == 1
+
+
+def test_reattach_anchors_to_last_seen_not_coasted_position():
+    # A person moving, lost beyond max_age, then reappearing near where they were
+    # LAST SEEN must keep their id. The spatial gate must anchor to the
+    # last-detected position, not the Kalman-extrapolated (coasted) one, which
+    # drifts far ahead for a mover and would otherwise reject the true return.
+    # Uses realistic params (min_hits=3, smoothing on, max_age 12) so the gallery
+    # path is exercised.
+    tr = MultiObjectTracker(max_age=12, min_hits=3, iou_thr=0.3, smooth=True,
+                            appearance=_ColorStub(), reid=True, reid_max_age=40, reid_thr=0.6)
+    red = (0, 0, 220)
+    x = 100
+    out = None
+    for _ in range(6):                       # confirm + build rightward velocity
+        b = [x, 100, x + 60, 260]
+        out = tr.update(make_result([b]), 1 / 8, _frame([(b, red)], size=600))
+        x += 25
+    assert out[0].id == 0
+    last_seen_x = x - 25
+    blank = np.zeros((600, 600, 3), np.uint8)
+    for _ in range(20):                      # lost well past max_age -> gallery
+        tr.update(make_result([]), 1 / 8, blank)
+    back = [last_seen_x, 100, last_seen_x + 60, 260]   # return to the last-seen spot
+    out2 = tr.update(make_result([back]), 1 / 8, _frame([(back, red)], size=600))
+    assert len(out2) == 1 and out2[0].id == 0   # id preserved, not a fresh spawn

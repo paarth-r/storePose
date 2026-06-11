@@ -7,10 +7,11 @@ import numpy as np
 from .kalman import KalmanBoxTracker
 from .smoothing import KeypointSmoother
 
-# Distinct BGR colors cycled by track id.
+# Distinct BGR colors cycled by track id. No near-orange entry, so a person's
+# color never collides with the orange queue zone fill (drawing.ZONE_COLOR).
 _PALETTE: list[tuple[int, int, int]] = [
-    (56, 56, 255), (56, 255, 56), (255, 56, 56), (56, 255, 255),
-    (255, 56, 255), (255, 255, 56), (56, 153, 255), (255, 153, 56),
+    (56, 56, 255), (56, 255, 56), (255, 56, 56), (56, 200, 200),
+    (255, 56, 255), (255, 255, 56), (255, 153, 56), (255, 56, 153),
     (153, 56, 255), (56, 255, 153),
 ]
 
@@ -18,6 +19,9 @@ _PALETTE: list[tuple[int, int, int]] = [
 def color_for(track_id: int) -> tuple[int, int, int]:
     """Stable BGR color for a track id."""
     return _PALETTE[track_id % len(_PALETTE)]
+
+
+_DESC_ALPHA = 0.3  # appearance descriptor EMA weight for new observations
 
 
 class Track:
@@ -35,9 +39,11 @@ class Track:
         smooth: bool,
         min_cutoff: float,
         beta: float,
+        descriptor: np.ndarray | None = None,
     ):
         self.id = track_id
         self.kalman = KalmanBoxTracker(box)
+        self.last_box = np.asarray(box, float)  # last *detected* box (not coasted)
         self.hits = 1
         self.time_since_update = 0
         self.min_hits = min_hits
@@ -48,6 +54,9 @@ class Track:
         )
         self.keypoints: np.ndarray | None = None
         self.scores: np.ndarray | None = None
+        self.descriptor: np.ndarray | None = (
+            None if descriptor is None else np.array(descriptor, dtype=np.float32)
+        )
         self._ingest_pose(keypoints, scores, dt)
 
     def _ingest_pose(self, keypoints, scores, dt) -> None:
@@ -64,14 +73,37 @@ class Track:
         self.kalman.predict()
         self.time_since_update += 1
 
-    def update(self, box, keypoints, scores, dt) -> None:
+    def _update_descriptor(self, descriptor) -> None:
+        if descriptor is None:
+            return
+        descriptor = np.array(descriptor, dtype=np.float32)
+        if self.descriptor is None:
+            self.descriptor = descriptor
+        else:
+            self.descriptor = (
+                (1.0 - _DESC_ALPHA) * self.descriptor + _DESC_ALPHA * descriptor
+            ).astype(np.float32)
+
+    def update(self, box, keypoints, scores, dt, descriptor=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
+        self.last_box = np.asarray(box, float)
         self.hits += 1
         self.time_since_update = 0
         if self.hits >= self.min_hits:
             self.confirmed = True
         self._ingest_pose(keypoints, scores, dt)
+        self._update_descriptor(descriptor)
+
+    def reactivate(self, box, keypoints, scores, dt, descriptor=None) -> None:
+        """Revive a lost/coasting track at a new detection, keeping id and color."""
+        self.kalman = KalmanBoxTracker(box)
+        self.last_box = np.asarray(box, float)
+        self.time_since_update = 0
+        self.hits += 1
+        self.confirmed = True
+        self._ingest_pose(keypoints, scores, dt)
+        self._update_descriptor(descriptor)
 
     @property
     def box(self) -> np.ndarray:

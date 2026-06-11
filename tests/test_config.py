@@ -31,11 +31,24 @@ def test_parses_flags():
         {"device": "cuda"},
         {"det_conf": 1.5},
         {"kpt_thr": -0.1},
+        {"busy_window": 0},
+        {"busy_metric": "vibes"},
+        {"busy_medium_max": 1.0, "busy_low_max": 2.0},
+        {"busy_hysteresis": -0.5},
     ],
 )
 def test_rejects_invalid(kwargs):
     with pytest.raises(ValueError):
         AppConfig(**kwargs)
+
+
+def test_busy_log_implies_busy():
+    cfg = from_args(["--busy-log", "out.csv", "--busy-metric", "mean_wait",
+                     "--busy-window", "300"])
+    assert cfg.busy is True
+    assert cfg.busy_log == "out.csv"
+    assert cfg.busy_metric == "mean_wait"
+    assert cfg.busy_window == 300.0
 
 
 def test_invalid_choice_exits():
@@ -95,7 +108,6 @@ def test_queue_defaults():
     c = from_args([])
     assert c.zone is None
     assert c.define_zone is False
-    assert c.wait_speed == 0.15
     assert c.wait_enter_frames == 5
     assert c.wait_exit_seconds == 2.0
     assert c.wait_log is None
@@ -104,22 +116,109 @@ def test_queue_defaults():
 def test_queue_flags():
     c = from_args([
         "--zone", "zones/sco.json", "--define-zone",
-        "--wait-speed", "0.2", "--wait-enter-frames", "8",
+        "--wait-enter-frames", "8",
         "--wait-exit-seconds", "3.0", "--wait-log", "waits.csv",
     ])
     assert c.zone == "zones/sco.json"
     assert c.define_zone is True
-    assert c.wait_speed == 0.2
     assert c.wait_enter_frames == 8
     assert c.wait_exit_seconds == 3.0
     assert c.wait_log == "waits.csv"
 
 
 @pytest.mark.parametrize("kwargs", [
-    {"wait_speed": 0.0},
     {"wait_enter_frames": 0},
     {"wait_exit_seconds": -0.5},
 ])
 def test_queue_rejects_invalid(kwargs):
     with pytest.raises(ValueError):
         AppConfig(**kwargs)
+
+
+def test_zone_foot_band_default_flag_and_validation():
+    assert from_args([]).zone_foot_band == 0.3
+    assert from_args(["--zone-foot-band", "0.25"]).zone_foot_band == 0.25
+    with pytest.raises(ValueError):
+        AppConfig(zone_foot_band=0.0)
+
+
+def test_reid_defaults_on():
+    cfg = from_args([])
+    assert cfg.reid is True
+    assert cfg.reid_seconds == 5.0
+    assert cfg.reid_thr == 0.6
+
+
+def test_no_reid_flag_disables():
+    assert from_args(["--no-reid"]).reid is False
+
+
+def test_reid_flags_parse():
+    cfg = from_args(["--reid-seconds", "8", "--reid-thr", "0.4"])
+    assert cfg.reid_seconds == 8.0 and cfg.reid_thr == 0.4
+
+
+def test_reid_seconds_must_be_nonnegative():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(reid_seconds=-1.0)
+
+
+def test_reid_thr_must_be_in_range():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(reid_thr=2.0)
+
+
+def test_det_conf_and_overlap_defaults():
+    cfg = from_args([])
+    assert cfg.det_conf == 0.7
+    assert cfg.det_overlap == 0.8
+
+
+def test_det_overlap_flag_parses():
+    assert from_args(["--det-overlap", "0.9"]).det_overlap == 0.9
+
+
+def test_det_overlap_must_be_in_range():
+    with pytest.raises(ValueError):
+        AppConfig(det_overlap=1.5)
+
+
+def test_pos_zone_flags():
+    cfg = from_args(["--pos-zone", "zones/p.json"])
+    assert cfg.pos_zone == "zones/p.json"
+    assert cfg.define_pos_zone is False
+    assert from_args(["--define-pos-zone"]).define_pos_zone is True
+
+
+def test_pos_zone_defaults_none():
+    cfg = from_args([])
+    assert cfg.pos_zone is None
+    assert cfg.define_pos_zone is False
+
+
+def test_pos_enter_frames_default_and_parse():
+    assert from_args([]).pos_enter_frames == 3
+    assert from_args(["--pos-enter-frames", "5"]).pos_enter_frames == 5
+
+
+def test_pos_enter_frames_must_be_positive():
+    with pytest.raises(ValueError):
+        AppConfig(pos_enter_frames=0)
+
+
+def test_dashboard_defaults_on():
+    cfg = from_args([])
+    assert cfg.dashboard is True
+    assert cfg.dashboard_port == 8000
+
+
+def test_no_dashboard_and_port():
+    assert from_args(["--no-dashboard"]).dashboard is False
+    assert from_args(["--dashboard-port", "9001"]).dashboard_port == 9001
+
+
+def test_dashboard_port_range_validated():
+    with pytest.raises(ValueError):
+        AppConfig(dashboard_port=70000)

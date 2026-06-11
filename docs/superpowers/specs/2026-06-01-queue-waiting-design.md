@@ -36,14 +36,18 @@ drops out:
 - **Ankle:** if a COCO ankle keypoint (15/16) clears `kpt_thr`, `ankle_inside =
   zone.contains(visible-ankle midpoint)` — precise, immune to box padding (carts)
   and bottom-edge occlusion. The midpoint is also the ground point for speed.
-- **Coverage:** `covered = zone.coverage(box) >= zone_coverage`, the fraction of
-  the box inside the polygon (grid sample) — robust when feet leave frame / are
-  occluded. Ground point falls back to box-bottom-center when no ankle is visible.
+- **Coverage:** `covered = zone.coverage(foot_box) >= zone_coverage`, the fraction
+  of the **foot region** inside the polygon (grid sample), where `foot_box` is the
+  bottom `zone_foot_band` (default 0.3) of the box. Only the foot strip is used,
+  not the whole box, because a standing person's box is mostly torso/head that
+  projects above a floor zone — whole-box coverage would under-count. Robust when
+  feet leave frame / are occluded.
 
 `in_zone = ankle_inside or covered`.
 
-**Speed** is measured from the stable Kalman box-bottom (never the ankle), so an
-ankle flashing in/out can't create a fake speed spike that drops `in_cond`.
+**No motion gating.** `in_cond = in_zone`. People in line move around (fetching
+items, pushing carts hiding their ankles), so requiring low speed wrongly reset
+their timers; presence in the zone is what counts.
 
 **Grace:** a brief loss of `in_cond` does not reset progress. `out_streak`
 accumulates only while `in_cond` is false; a candidate's `in_frames` resets (and

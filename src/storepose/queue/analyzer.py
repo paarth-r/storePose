@@ -2,68 +2,85 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..tracking.types import TrackedPerson
 from .types import CompletedWait, PersonStatus, QueueResult
 from .zone import Zone
 
-_SPEED_EMA_ALPHA = 0.5
 _L_ANKLE, _R_ANKLE = 15, 16  # COCO keypoint indices
 
 
 @dataclass
-class _WaitState:
-    waiting: bool = False
-    wait_seconds: float = 0.0
-    entered_s: float = 0.0
+class _VisitState:
+    state: str = "out"            # "out" | "waiting" | "serving"
+    waiting_seconds: float = 0.0
+    serving_seconds: float = 0.0
+    entered_s: float = 0.0        # clock when the visit began (first waiting/serving)
+    reached_pos: bool = False
     in_frames: int = 0
+    in_seconds: float = 0.0
     out_streak: float = 0.0
-    speed_ema: float = 0.0
-    prev_foot: tuple[float, float] | None = field(default=None)
-
-
-def _foot(box) -> tuple[float, float]:
-    x1, _, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
-    return ((x1 + x2) / 2.0, y2)
+    pos_frames: int = 0           # consecutive in-POS frames (waiting -> serving debounce)
+    absent_seconds: float = 0.0   # time the track has been gone (re-id grace)
 
 
 class QueueAnalyzer:
-    """Decides whether each tracked person is waiting in the zone.
+    """Per-person line state machine splitting a visit into waiting vs serving.
 
-    A person is *waiting* once their foot point stays inside the zone while
-    moving slowly (in body-heights/sec) for at least ``enter_frames`` consecutive
-    frames; before that they are a *candidate* with a 0..1 inclusion ``progress``.
-    They stop waiting after ``exit_seconds`` of failing the condition, or when
-    their track disappears. ``count`` is the number currently waiting; finished
-    waits are reported in :attr:`QueueResult.completed`.
+    States: OUT (not yet counted) -> WAITING (in the line zone, not at POS) ->
+    SERVING (in the POS zone) -> done. ``enter_frames`` + ``min_dwell_seconds``
+    is the bystander gate for entering the line; ``exit_seconds`` debounces the
+    leaving transitions. Each frame's ``dt`` accrues to the current state; while
+    a track is vanished (within ``reid_grace_seconds``) ``dt`` is attributed to
+    the state held when it disappeared, so a re-identified person resumes with
+    the gap counted into that state. A visit finalizes as ``"served"`` (reached
+    POS) or ``"abandoned"`` and is reported in :attr:`QueueResult.completed`.
+    With ``pos_zone=None`` no one ever enters SERVING (single-zone behavior).
     """
 
     def __init__(
         self,
         zone: Zone,
-        wait_speed: float = 0.15,
+        pos_zone: Zone | None = None,
         enter_frames: int = 5,
         exit_seconds: float = 2.0,
         kpt_thr: float = 0.5,
         coverage_thr: float = 0.5,
+        foot_band: float = 0.3,
+        min_dwell_seconds: float = 0.0,
+        reid_grace_seconds: float = 0.0,
+        pos_enter_frames: int = 3,
     ):
         self.zone = zone
-        self.wait_speed = wait_speed
+        self.pos_zone = pos_zone
         self.enter_frames = max(1, enter_frames)
+        self.pos_enter_frames = max(1, pos_enter_frames)
         self.exit_seconds = exit_seconds
+        self.min_dwell_seconds = max(0.0, min_dwell_seconds)
+        self.reid_grace_seconds = max(0.0, reid_grace_seconds)
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
-        self._states: dict[int, _WaitState] = {}
+        self.foot_band = foot_band
+        self._states: dict[int, _VisitState] = {}
         self._clock = 0.0
 
-    def _in_zone(self, person: TrackedPerson) -> bool:
-        """Whether the person is in the zone, as an OR of two signals so a held
+    def _foot_box(self, box) -> tuple[float, float, float, float]:
+        """The bottom ``foot_band`` strip of the box — where floor contact is.
+
+        Coverage is measured here, not over the whole box, because a standing
+        person's box is mostly torso/head that projects above a floor zone.
+        """
+        x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        band = max(1.0, (y2 - y1) * self.foot_band)
+        return (x1, y2 - band, x2, y2)
+
+    def _in_zone(self, person: TrackedPerson, zone: Zone) -> bool:
+        """Whether the person is in ``zone``, as an OR of two signals so a held
         position isn't lost when one drops out: the visible-ankle midpoint inside
-        the polygon (precise, ignores box padding/carts), OR the box-coverage
-        fraction inside the zone meeting ``coverage_thr`` (robust when feet leave
-        frame / are occluded)."""
+        the polygon (precise, ignores box padding/carts), OR the coverage of the
+        foot region inside the zone meeting ``coverage_thr`` (robust when feet
+        leave frame / are occluded)."""
         kpts, scores = person.keypoints, person.scores
         if kpts is not None and scores is not None:
             ankles = [
@@ -76,9 +93,33 @@ class QueueAnalyzer:
                     sum(p[0] for p in ankles) / len(ankles),
                     sum(p[1] for p in ankles) / len(ankles),
                 )
-                if self.zone.contains(mid):
+                if zone.contains(mid):
                     return True
-        return self.zone.coverage(person.box) >= self.coverage_thr
+        return zone.coverage(self._foot_box(person.box)) >= self.coverage_thr
+
+    def _finalize(self, pid: int, st: _VisitState, completed: list) -> None:
+        # Without a POS zone there is no abandonment concept: a finished wait is
+        # simply "served" (preserves single-zone busy/throughput behavior).
+        outcome = "served" if (st.reached_pos or self.pos_zone is None) else "abandoned"
+        completed.append(
+            CompletedWait(
+                pid, st.entered_s, self._clock, st.waiting_seconds,
+                st.serving_seconds, outcome,
+            )
+        )
+
+    def _status(self, pid: int, st: _VisitState) -> PersonStatus:
+        waiting = st.state == "waiting"
+        serving = st.state == "serving"
+        candidate = st.state == "out" and st.in_frames > 0
+        frame_progress = st.in_frames / self.enter_frames
+        if self.min_dwell_seconds > 0:
+            frame_progress = min(frame_progress, st.in_seconds / self.min_dwell_seconds)
+        progress = 1.0 if (waiting or serving) else min(frame_progress, 1.0)
+        return PersonStatus(
+            pid, waiting, candidate, progress, st.waiting_seconds,
+            serving, st.serving_seconds,
+        )
 
     def update(self, people: list[TrackedPerson], dt: float) -> QueueResult:
         self._clock += dt
@@ -88,65 +129,93 @@ class QueueAnalyzer:
 
         for person in people:
             present.add(person.id)
-            st = self._states.setdefault(person.id, _WaitState())
+            st = self._states.setdefault(person.id, _VisitState())
+            st.absent_seconds = 0.0
 
-            # Speed uses the stable Kalman box-bottom, never the ankle, so an
-            # ankle flashing in/out can't create a fake speed spike.
-            foot = _foot(person.box)
-            box_h = max(float(person.box[3]) - float(person.box[1]), 1.0)
-            if st.prev_foot is None:
-                inst_speed = 0.0
-            else:
-                dist = math.hypot(foot[0] - st.prev_foot[0], foot[1] - st.prev_foot[1])
-                inst_speed = dist / max(dt, 1e-6) / box_h
-            st.prev_foot = foot
-            st.speed_ema = _SPEED_EMA_ALPHA * inst_speed + (1 - _SPEED_EMA_ALPHA) * st.speed_ema
+            in_line = self._in_zone(person, self.zone)
+            in_pos = self.pos_zone is not None and self._in_zone(person, self.pos_zone)
+            if in_pos:
+                in_line = False  # POS and line are mutually exclusive; POS wins
 
-            in_cond = self._in_zone(person) and st.speed_ema < self.wait_speed
-
-            # A brief loss of in_cond does not reset progress; only a loss
-            # sustained for >= exit_seconds resets a candidate or ends a wait.
-            if st.waiting:
-                st.wait_seconds += dt
-                if in_cond:
+            if st.state == "serving":
+                st.serving_seconds += dt
+                if in_pos:
                     st.out_streak = 0.0
                 else:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:
-                        completed.append(
-                            CompletedWait(person.id, st.entered_s, self._clock, st.wait_seconds)
-                        )
-                        st.waiting = False
-                        st.wait_seconds = 0.0
-                        st.in_frames = 0
-                        st.out_streak = 0.0
-            else:
-                if in_cond:
+                        self._finalize(person.id, st, completed)
+                        self._states.pop(person.id)
+                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0))
+                        continue
+            elif st.state == "waiting":
+                st.waiting_seconds += dt
+                if in_pos:
+                    st.out_streak = 0.0
+                    st.pos_frames += 1
+                    if st.pos_frames >= self.pos_enter_frames:
+                        st.state = "serving"
+                        st.reached_pos = True
+                        st.pos_frames = 0
+                elif in_line:
+                    st.out_streak = 0.0
+                    st.pos_frames = 0
+                else:
+                    st.out_streak += dt
+                    if st.out_streak >= self.exit_seconds:
+                        self._finalize(person.id, st, completed)  # abandoned
+                        self._states.pop(person.id)
+                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0))
+                        continue
+            else:  # out
+                if in_line or in_pos:
                     st.out_streak = 0.0
                     st.in_frames += 1
-                    if st.in_frames >= self.enter_frames:
-                        st.waiting = True
+                    st.in_seconds += dt
+                    if (
+                        st.in_frames >= self.enter_frames
+                        and st.in_seconds >= self.min_dwell_seconds
+                    ):
                         st.entered_s = self._clock
-                        st.wait_seconds = 0.0
+                        if in_pos:
+                            st.state = "serving"
+                            st.reached_pos = True
+                        else:
+                            st.state = "waiting"
                 else:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:
-                        st.in_frames = 0  # candidate truly gone; reset progress
+                        st.in_frames = 0
+                        st.in_seconds = 0.0
 
-            candidate = not st.waiting and st.in_frames > 0
-            progress = 1.0 if st.waiting else min(st.in_frames / self.enter_frames, 1.0)
-            statuses.append(
-                PersonStatus(person.id, st.waiting, candidate, progress, st.wait_seconds)
-            )
+            status = self._status(person.id, st)
+            if in_pos and status.waiting:
+                # box is in POS: leave the line count instantly (the serving
+                # timer still rides out the pos_enter_frames debounce, so they
+                # are neither "in line" nor yet "at POS" during those frames).
+                status = PersonStatus(person.id, False, False, status.progress,
+                                      status.wait_seconds, False, st.serving_seconds)
+            statuses.append(status)
 
-        # finalize people whose track vanished this frame
+        # vanished tracks: carry the gap forward into the held state while within
+        # the re-id grace window; finalize once gone past it.
         for pid in list(self._states):
-            if pid not in present:
-                st = self._states.pop(pid)
-                if st.waiting:
-                    completed.append(
-                        CompletedWait(pid, st.entered_s, self._clock, st.wait_seconds)
-                    )
+            if pid in present:
+                continue
+            st = self._states[pid]
+            st.absent_seconds += dt
+            if st.absent_seconds >= self.reid_grace_seconds:
+                self._states.pop(pid)
+                if st.state in ("waiting", "serving"):
+                    self._finalize(pid, st, completed)
+            elif st.state == "waiting":
+                st.waiting_seconds += dt
+            elif st.state == "serving":
+                st.serving_seconds += dt
 
         count = sum(1 for s in statuses if s.waiting)
-        return QueueResult(statuses=statuses, count=count, completed=completed)
+        serving_count = sum(1 for s in statuses if s.serving)
+        return QueueResult(
+            statuses=statuses, count=count, serving_count=serving_count,
+            completed=completed,
+        )
