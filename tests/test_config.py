@@ -140,3 +140,31 @@ def test_zone_foot_band_default_flag_and_validation():
     assert from_args(["--zone-foot-band", "0.25"]).zone_foot_band == 0.25
     with pytest.raises(ValueError):
         AppConfig(zone_foot_band=0.0)
+
+
+def test_reid_defaults_on():
+    cfg = from_args([])
+    assert cfg.reid is True
+    assert cfg.reid_seconds == 5.0
+    assert cfg.reid_thr == 0.6
+
+
+def test_no_reid_flag_disables():
+    assert from_args(["--no-reid"]).reid is False
+
+
+def test_reid_flags_parse():
+    cfg = from_args(["--reid-seconds", "8", "--reid-thr", "0.4"])
+    assert cfg.reid_seconds == 8.0 and cfg.reid_thr == 0.4
+
+
+def test_reid_seconds_must_be_nonnegative():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(reid_seconds=-1.0)
+
+
+def test_reid_thr_must_be_in_range():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(reid_thr=2.0)

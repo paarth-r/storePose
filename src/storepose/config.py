@@ -29,6 +29,9 @@ class AppConfig:
         iou_thr: Min IoU to associate a detection to a track.
         max_overlap: A coasting track overlapping a kept track by more than this
             is dropped (suppresses duplicate boxes on one person).
+        reid: Re-attach a returning person's id via appearance (requires tracking).
+        reid_seconds: How long a lost track stays re-attachable, in seconds.
+        reid_thr: Appearance similarity floor for re-attach, in [-1, 1].
         smooth: Whether to One-Euro smooth keypoints.
         smooth_cutoff: One-Euro min_cutoff (lower = smoother/laggier).
         smooth_beta: One-Euro beta (higher = more responsive to speed).
@@ -63,6 +66,9 @@ class AppConfig:
     min_hits: int = 3
     iou_thr: float = 0.3
     max_overlap: float = 0.5
+    reid: bool = True
+    reid_seconds: float = 5.0
+    reid_thr: float = 0.6
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -98,6 +104,10 @@ class AppConfig:
             raise ValueError(f"iou_thr must be in [0, 1], got {self.iou_thr}")
         if not 0.0 <= self.max_overlap <= 1.0:
             raise ValueError(f"max_overlap must be in [0, 1], got {self.max_overlap}")
+        if self.reid_seconds < 0:
+            raise ValueError(f"reid_seconds must be >= 0, got {self.reid_seconds}")
+        if not -1.0 <= self.reid_thr <= 1.0:
+            raise ValueError(f"reid_thr must be in [-1, 1], got {self.reid_thr}")
         if self.hold_seconds < 0:
             raise ValueError(f"hold_seconds must be >= 0, got {self.hold_seconds}")
         if self.smooth_cutoff <= 0:
@@ -203,6 +213,18 @@ def _build_parser() -> argparse.ArgumentParser:
              "(suppresses duplicate boxes on one person; default: 0.5).",
     )
     parser.add_argument(
+        "--no-reid", dest="reid", action="store_false",
+        help="Disable appearance re-id (re-attaching a returning person's id).",
+    )
+    parser.add_argument(
+        "--reid-seconds", type=float, default=5.0,
+        help="How long a lost track stays re-attachable, in seconds (default: 5.0).",
+    )
+    parser.add_argument(
+        "--reid-thr", type=float, default=0.6,
+        help="Appearance similarity floor for re-attach, in [-1,1] (default: 0.6).",
+    )
+    parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
         help="Disable One-Euro keypoint smoothing.",
     )
@@ -302,6 +324,9 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         min_hits=args.min_hits,
         iou_thr=args.iou_thr,
         max_overlap=args.max_overlap,
+        reid=args.reid,
+        reid_seconds=args.reid_seconds,
+        reid_thr=args.reid_thr,
         smooth=args.smooth,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
