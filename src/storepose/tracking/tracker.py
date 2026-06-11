@@ -24,7 +24,12 @@ def _center(box: np.ndarray) -> tuple[float, float]:
 
 @dataclass
 class _LostEntry:
-    """A confirmed track that aged out, awaiting appearance re-attach."""
+    """A confirmed track that aged out, awaiting appearance re-attach.
+
+    ``center`` is the box center at the moment the track aged out (the Kalman
+    filter is not advanced during gallery tenure); the re-attach spatial gate
+    compensates by growing its radius with ``lost_age``.
+    """
     track: Track
     center: tuple[float, float]
     lost_age: int
