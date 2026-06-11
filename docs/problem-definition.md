@@ -80,9 +80,13 @@ shopper walking through the checkout area should not count. The membership test
 applies a **minimum-dwell gate** (`--wait-min-dwell`): a person must accumulate N
 seconds of in-zone time before they count as waiting. This is framerate-
 independent (unlike a raw frame count) and cleanly separates lingerers (line
-members) from transients (pass-throughs) *without* motion-gating people who
-legitimately move around while queued. Trajectory/transit modeling is a
-documented next step if dwell alone proves insufficient.
+members) from transients (pass-throughs). A second, complementary filter rejects
+**directional transit**: each person carries an EMA of their velocity *vector*
+(`--transit-speed`, body-heights/sec) — a shopper walking *through* the zone keeps
+a large directional velocity and counts in no zone, while a queued person shuffling
+in place (whose back-and-forth cancels in the vector EMA) still counts. So we gate
+*sustained directional movement*, not stillness — people who legitimately move
+around while queued are unaffected.
 
 ## 3. Architecture of the aggregation layer
 

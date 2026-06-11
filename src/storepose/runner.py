@@ -28,6 +28,7 @@ from .video_source import VideoSource
 WINDOW_NAME = "storePose"
 _QUIT_KEYS = {ord("q"), 27}  # 'q' or Esc
 _DEFAULT_FPS = 30.0
+_BUSY_REFRESH_SECONDS = 10.0  # how often the Low/Med/High busy label is recomputed
 
 
 class Runner:
@@ -69,16 +70,18 @@ class Runner:
                         reid_max_age=reid_max_age, reid_thr=config.reid_thr,
                     )
 
-                zone, analyzer, pos_zone = None, None, None
+                zone, analyzer, pos_zone, alt_zone = None, None, None, None
                 if config.zone:
                     if tracker is None:
                         print("Note: --zone needs tracking; ignoring (you passed --no-track).")
                     else:
                         zone = Zone.load(config.zone)
                         pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
+                        alt_zone = Zone.load(config.alt_zone) if config.alt_zone else None
                         analyzer = QueueAnalyzer(
                             zone,
                             pos_zone=pos_zone,
+                            alt_zone=alt_zone,
                             enter_frames=config.wait_enter_frames,
                             exit_seconds=config.wait_exit_seconds,
                             kpt_thr=config.kpt_thr,
@@ -89,9 +92,10 @@ class Runner:
                             # for the re-id window; a re-identified id resumes it
                             reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
                             pos_enter_frames=config.pos_enter_frames,
+                            transit_speed=config.transit_speed,
                         )
-                elif config.pos_zone:
-                    print("Note: --pos-zone needs --zone (the line zone); ignoring POS.")
+                elif config.pos_zone or config.alt_zone:
+                    print("Note: --pos-zone/--alt-zone need --zone (the line zone); ignoring.")
 
                 busy = None
                 if config.busy and analyzer is not None:
@@ -135,6 +139,8 @@ class Runner:
                 base_dt = 1.0 / (source.fps or _DEFAULT_FPS)
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
                 prev = None
+                next_busy = 0.0          # next clock time to refresh the busy label
+                busy_label, busy_value = "—", 0.0
                 for frame in source:
                     if is_file:
                         dt = base_dt                       # file: video time
@@ -151,7 +157,8 @@ class Runner:
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
-                            canvas = annotate_queue(canvas, people, qresult, zone, config, pos_zone=pos_zone)
+                            canvas = annotate_queue(canvas, people, qresult, zone, config,
+                                                    pos_zone=pos_zone, alt_zone=alt_zone)
                             if wait_writer is not None:
                                 for c in qresult.completed:
                                     wait_writer.writerow(
@@ -167,11 +174,16 @@ class Runner:
                             if busy is not None:
                                 busy.observe(clock, qresult.count, dt)
                                 for c in qresult.completed:
-                                    if c.outcome == "served":
+                                    if c.outcome in ("served", "served_other"):
                                         busy.add_wait(c)
-                                level, value = busy.estimate(clock)
-                                remaining = config.busy_window - (clock % config.busy_window)
-                                canvas = annotate_busy(canvas, level.label, value, remaining)
+                                if clock >= next_busy:  # refresh the label every 10 s
+                                    level, busy_value = busy.estimate(clock)
+                                    busy_label = level.label
+                                    next_busy = clock + _BUSY_REFRESH_SECONDS
+                                    if dash_state is not None:
+                                        dash_state.set_busy(clock, busy_label, busy_value)
+                                canvas = annotate_busy(canvas, busy_label, busy_value,
+                                                       next_busy - clock)
                     else:
                         canvas = annotate(frame, result, config, fps)
 

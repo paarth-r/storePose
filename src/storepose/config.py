@@ -41,8 +41,12 @@ class AppConfig:
         define_zone: Launch the interactive zone editor and exit.
         pos_zone: Path to a POS-zone JSON; enables waiting-vs-serving split.
         define_pos_zone: Launch the editor for the POS zone and exit.
+        alt_zone: Path to a non-Mashgin checkout zone JSON (the comparison).
+        define_alt_zone: Launch the editor for the non-Mashgin checkout and exit.
         wait_enter_frames: Consecutive in-zone frames before WAITING.
         pos_enter_frames: Consecutive in-POS frames before SERVING (debounce).
+        transit_speed: Reject walk-throughs: directional speed (body-heights/sec)
+            above which a person counts in no zone; 0 disables the filter.
         wait_exit_seconds: Out-of-condition time before WAITING ends.
         zone_coverage: When ankles are occluded, min fraction of the foot region
             inside the zone to count as in-zone.
@@ -84,8 +88,11 @@ class AppConfig:
     define_zone: bool = False
     pos_zone: str | None = None
     define_pos_zone: bool = False
+    alt_zone: str | None = None
+    define_alt_zone: bool = False
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
+    transit_speed: float = 0.4
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
     zone_foot_band: float = 0.3
@@ -129,6 +136,8 @@ class AppConfig:
             raise ValueError(f"smooth_beta must be >= 0, got {self.smooth_beta}")
         if self.wait_enter_frames < 1:
             raise ValueError(f"wait_enter_frames must be >= 1, got {self.wait_enter_frames}")
+        if self.transit_speed < 0:
+            raise ValueError(f"transit_speed must be >= 0, got {self.transit_speed}")
         if self.pos_enter_frames < 1:
             raise ValueError(f"pos_enter_frames must be >= 1, got {self.pos_enter_frames}")
         if self.wait_exit_seconds < 0:
@@ -277,6 +286,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive editor for the POS zone and exit.",
     )
     parser.add_argument(
+        "--alt-zone", default=None, metavar="PATH",
+        help="Non-Mashgin checkout zone JSON; enables the checkout comparison.",
+    )
+    parser.add_argument(
+        "--define-alt-zone", dest="define_alt_zone", action="store_true",
+        help="Launch the interactive editor for the non-Mashgin checkout and exit.",
+    )
+    parser.add_argument(
         "--wait-enter-frames", type=int, default=5,
         help="Consecutive in-zone+slow frames before WAITING (default: 5).",
     )
@@ -284,6 +301,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--pos-enter-frames", type=int, default=3,
         help="Consecutive in-POS frames before SERVING; debounces the POS edge "
              "(default: 3).",
+    )
+    parser.add_argument(
+        "--transit-speed", type=float, default=0.4,
+        help="Reject walk-throughs: directional speed (body-heights/sec) above "
+             "which a person counts in no zone; 0 disables (default: 0.4).",
     )
     parser.add_argument(
         "--wait-exit-seconds", type=float, default=2.0,
@@ -380,8 +402,11 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         define_zone=args.define_zone,
         pos_zone=args.pos_zone,
         define_pos_zone=args.define_pos_zone,
+        alt_zone=args.alt_zone,
+        define_alt_zone=args.define_alt_zone,
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
+        transit_speed=args.transit_speed,
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,
         zone_foot_band=args.zone_foot_band,

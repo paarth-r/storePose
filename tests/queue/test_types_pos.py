@@ -21,3 +21,10 @@ def test_completed_wait_has_serving_and_outcome_defaults():
 def test_queue_result_has_serving_count_default():
     r = QueueResult(statuses=[], count=0)
     assert r.serving_count == 0
+
+
+def test_serving_other_defaults():
+    s = PersonStatus(id=1, waiting=False, candidate=False, progress=1.0, wait_seconds=0.0)
+    assert s.serving_other is False
+    r = QueueResult(statuses=[], count=0)
+    assert r.serving_other_count == 0

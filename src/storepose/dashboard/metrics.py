@@ -70,12 +70,63 @@ def summary_stats(occ: list, visits: list) -> dict:
     }
 
 
-def build_payload(snapshot: tuple[list, list]) -> dict:
+_BUSY_IDX = {"Low": 0, "Medium": 1, "High": 2}
+
+
+def busy_series(current, history: list) -> dict:
+    """Current busy label/value plus its history as a 0/1/2 step series."""
+    if current:
+        cur = {"level": current[1], "value": current[2]}
+    else:
+        cur = {"level": None, "value": 0.0}
+    return {
+        "current": cur,
+        "t": [b[0] for b in history],
+        "level_idx": [_BUSY_IDX.get(b[1], 0) for b in history],
+        "value": [b[2] for b in history],
+    }
+
+
+def checkout_stats(visits: list) -> dict:
+    """Avg serve time per person at the Mashgin vs non-Mashgin checkout + delta."""
+    mash = [v for v in visits if v.outcome == "served"]
+    other = [v for v in visits if v.outcome == "served_other"]
+
+    def avg(vs):
+        return sum(v.serving_seconds for v in vs) / len(vs) if vs else 0.0
+
+    m_avg, o_avg = avg(mash), avg(other)
+    return {
+        "mashgin_avg": m_avg, "mashgin_n": len(mash),
+        "other_avg": o_avg, "other_n": len(other),
+        "delta": o_avg - m_avg,  # seconds the Mashgin checkout saves per person
+    }
+
+
+def checkout_series(visits: list, window: float = 120.0) -> dict:
+    """Trailing-window mean serve time per checkout, as two time series."""
+    mash = [v for v in visits if v.outcome == "served"]
+    other = [v for v in visits if v.outcome == "served_other"]
+    mt, ot = [v.t for v in mash], [v.t for v in other]
+    return {
+        "t_mashgin": mt,
+        "mashgin_ma": moving_average(mt, [v.serving_seconds for v in mash], window),
+        "t_other": ot,
+        "other_ma": moving_average(ot, [v.serving_seconds for v in other], window),
+    }
+
+
+def build_payload(snapshot: tuple[list, list], busy: tuple = (None, [])) -> dict:
     occ, visits = snapshot
+    busy_current, busy_history = busy
     now = occ[-1][0] if occ else 0.0
+    checkouts = checkout_stats(visits)
+    checkouts["series"] = checkout_series(visits)
     return {
         "now": now,
         "summary": summary_stats(occ, visits),
+        "busy": busy_series(busy_current, busy_history),
+        "checkouts": checkouts,
         "occupancy": occupancy_series(occ),
         "wait_serve": wait_serve_series(visits),
         "throughput": throughput_series(visits),

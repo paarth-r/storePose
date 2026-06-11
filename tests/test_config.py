@@ -222,3 +222,18 @@ def test_no_dashboard_and_port():
 def test_dashboard_port_range_validated():
     with pytest.raises(ValueError):
         AppConfig(dashboard_port=70000)
+
+
+def test_alt_zone_flags():
+    cfg = from_args(["--alt-zone", "zones/a.json"])
+    assert cfg.alt_zone == "zones/a.json"
+    assert cfg.define_alt_zone is False
+    assert from_args(["--define-alt-zone"]).define_alt_zone is True
+    assert from_args([]).alt_zone is None
+
+
+def test_transit_speed_default_parse_and_validation():
+    assert from_args([]).transit_speed == 0.4
+    assert from_args(["--transit-speed", "0"]).transit_speed == 0.0
+    with pytest.raises(ValueError):
+        AppConfig(transit_speed=-1.0)

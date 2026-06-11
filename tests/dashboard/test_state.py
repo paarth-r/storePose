@@ -33,3 +33,12 @@ def test_buffers_are_bounded():
         s.add_visit(float(i), 1.0, 1.0, "served")
     occ, visits = s.snapshot()
     assert len(occ) == 3 and len(visits) == 2
+
+
+def test_busy_set_and_snapshot():
+    s = DashboardState()
+    assert s.busy_snapshot() == (None, [])
+    s.set_busy(5.0, "High", 4.2)
+    cur, hist = s.busy_snapshot()
+    assert cur == (5.0, "High", 4.2)
+    assert hist == [(5.0, "High", 4.2)]

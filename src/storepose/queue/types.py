@@ -26,6 +26,7 @@ class PersonStatus:
     wait_seconds: float
     serving: bool = False
     serving_seconds: float = 0.0
+    serving_other: bool = False  # serving at the non-Mashgin checkout
 
 
 @dataclass
@@ -51,4 +52,5 @@ class QueueResult:
     statuses: list[PersonStatus]
     count: int
     serving_count: int = 0
+    serving_other_count: int = 0
     completed: list[CompletedWait] = field(default_factory=list)

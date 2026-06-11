@@ -59,10 +59,13 @@ Press **`q`** or **Esc** in the window to quit.
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
 | `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
-| `--pos-zone`     | —       | POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
+| `--pos-zone`     | —       | Mashgin POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
 | `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
+| `--alt-zone`     | —       | Non-Mashgin checkout zone; enables the Mashgin-vs-traditional comparison. |
+| `--define-alt-zone` | —    | Launch the editor for the non-Mashgin checkout and exit. |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
 | `--pos-enter-frames`   | `3`   | Consecutive in-POS frames before SERVING (debounces the POS edge). |
+| `--transit-speed`      | `0.4` | Reject walk-throughs: directional speed (body-heights/sec) above which a person counts in no zone; `0` disables. |
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
 | `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
@@ -98,7 +101,7 @@ Define a queue area once per (fixed) camera, then storePose flags each person
 **waiting** in it, shows a live **count**, and logs **per-person wait time**.
 
 ```bash
-# 1. draw zones: '1' for line contours, '2' for POS; 'n' new contour, 's' save, 'q' quit
+# 1. draw zones: '1' line, '2' Mashgin POS, '3' non-Mashgin; 'n' new contour, 's' save, 'q' quit
 uv run python main.py --define-zone --source videos/clip.mp4
 
 # 2. run with the zone; optionally log completed waits to CSV
@@ -121,9 +124,12 @@ outside while the body is still in the zone — the wait timer keeps running.
 
 A person is "waiting" once that in-zone test holds for `--wait-enter-frames`
 (default 5) consecutive frames; they stop after `--wait-exit-seconds` out of the
-zone or when their track is lost. There is **no motion gating** — people in line
-move around (fetching items, pushing carts), so presence in the zone is what
-counts, not how still they are.
+zone or when their track is lost. People walking *through* a zone (a walkway by a
+checkout) are rejected by a **transit filter** (`--transit-speed`): each person's
+velocity-vector EMA flags sustained directional motion, so only people who have
+**stopped** count. In-place movement (fetching items, shuffling — whose back-and-
+forth cancels in the vector average) still counts; set `--transit-speed 0` to
+disable the filter entirely.
 
 Visual states (drawn in each person's **persistent id color**, not a shared hue):
 - **Joining** (candidate): a "sheer" fill rises over the box as a flood
