@@ -43,6 +43,7 @@ class Track:
     ):
         self.id = track_id
         self.kalman = KalmanBoxTracker(box)
+        self.last_box = np.asarray(box, float)  # last *detected* box (not coasted)
         self.hits = 1
         self.time_since_update = 0
         self.min_hits = min_hits
@@ -86,6 +87,7 @@ class Track:
     def update(self, box, keypoints, scores, dt, descriptor=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
+        self.last_box = np.asarray(box, float)
         self.hits += 1
         self.time_since_update = 0
         if self.hits >= self.min_hits:
@@ -96,6 +98,7 @@ class Track:
     def reactivate(self, box, keypoints, scores, dt, descriptor=None) -> None:
         """Revive a lost/coasting track at a new detection, keeping id and color."""
         self.kalman = KalmanBoxTracker(box)
+        self.last_box = np.asarray(box, float)
         self.time_since_update = 0
         self.hits += 1
         self.confirmed = True

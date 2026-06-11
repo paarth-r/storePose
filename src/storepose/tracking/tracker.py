@@ -26,9 +26,10 @@ def _center(box: np.ndarray) -> tuple[float, float]:
 class _LostEntry:
     """A confirmed track that aged out, awaiting appearance re-attach.
 
-    ``center`` is the box center at the moment the track aged out (the Kalman
-    filter is not advanced during gallery tenure); the re-attach spatial gate
-    compensates by growing its radius with ``lost_age``.
+    ``center`` is the center of the track's last *detected* box (where the person
+    was actually last seen), not the Kalman-extrapolated position, which drifts
+    far ahead for a mover and would otherwise reject a true reappearance. The
+    re-attach spatial gate still grows its radius with ``lost_age``.
     """
     track: Track
     center: tuple[float, float]
@@ -166,7 +167,7 @@ class MultiObjectTracker:
             if t.time_since_update > self.max_age:
                 if use_reid and t.confirmed and t.descriptor is not None:
                     self._lost.append(
-                        _LostEntry(track=t, center=_center(t.box), lost_age=0)
+                        _LostEntry(track=t, center=_center(t.last_box), lost_age=0)
                     )
                 continue
             survivors.append(t)
@@ -208,7 +209,7 @@ class MultiObjectTracker:
             t = self._tracks[tr_idx]
             if not t.confirmed or t.descriptor is None:
                 continue
-            cands.append(_Candidate(t, None, _center(t.box), t.time_since_update, t.descriptor))
+            cands.append(_Candidate(t, None, _center(t.last_box), t.time_since_update, t.descriptor))
         for e in self._lost:
             if e.track.descriptor is None:
                 continue

@@ -190,3 +190,29 @@ def test_reid_disabled_returns_new_id_on_reappearance():
         tr.update(make_result([]), 1 / 30)
     out = tr.update(make_result([[110, 105, 150, 185]]), 1 / 30)
     assert out[0].id == 1
+
+
+def test_reattach_anchors_to_last_seen_not_coasted_position():
+    # A person moving, lost beyond max_age, then reappearing near where they were
+    # LAST SEEN must keep their id. The spatial gate must anchor to the
+    # last-detected position, not the Kalman-extrapolated (coasted) one, which
+    # drifts far ahead for a mover and would otherwise reject the true return.
+    # Uses realistic params (min_hits=3, smoothing on, max_age 12) so the gallery
+    # path is exercised.
+    tr = MultiObjectTracker(max_age=12, min_hits=3, iou_thr=0.3, smooth=True,
+                            appearance=_ColorStub(), reid=True, reid_max_age=40, reid_thr=0.6)
+    red = (0, 0, 220)
+    x = 100
+    out = None
+    for _ in range(6):                       # confirm + build rightward velocity
+        b = [x, 100, x + 60, 260]
+        out = tr.update(make_result([b]), 1 / 8, _frame([(b, red)], size=600))
+        x += 25
+    assert out[0].id == 0
+    last_seen_x = x - 25
+    blank = np.zeros((600, 600, 3), np.uint8)
+    for _ in range(20):                      # lost well past max_age -> gallery
+        tr.update(make_result([]), 1 / 8, blank)
+    back = [last_seen_x, 100, last_seen_x + 60, 260]   # return to the last-seen spot
+    out2 = tr.update(make_result([back]), 1 / 8, _frame([(back, red)], size=600))
+    assert len(out2) == 1 and out2[0].id == 0   # id preserved, not a fresh spawn
