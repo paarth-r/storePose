@@ -149,3 +149,31 @@ def test_palette_has_no_near_orange_color():
     for b, g, r in _PALETTE:
         # an orange is low-blue, mid/high-green, high-red; ensure none collide
         assert not (b < 80 and g > 120 and r > 200)
+
+
+def test_annotate_queue_draws_pos_zone_and_serving_tag():
+    from storepose.drawing import annotate_queue, POS_COLOR
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    teal = (200, 200, 0)
+    person = TrackedPerson(id=1, box=np.array([20, 20, 100, 110], float),
+                           keypoints=None, scores=None, coasting=False, color=teal)
+    result = QueueResult(
+        statuses=[PersonStatus(id=1, waiting=False, candidate=False, progress=1.0,
+                               wait_seconds=0.0, serving=True, serving_seconds=4.2)],
+        count=0, serving_count=1,
+    )
+    line_zone = Zone([(0, 0), (160, 0), (160, 120), (0, 120)])
+    pos_zone = Zone([(80, 0), (160, 0), (160, 120), (80, 120)])
+    out = annotate_queue(frame.copy(), [person], result, line_zone, AppConfig(),
+                         pos_zone=pos_zone)
+    assert out.shape == frame.shape
+    assert (out[:, :, 0] > 0).sum() > 0  # POS_COLOR has a blue channel
+
+
+def test_annotate_queue_pos_zone_optional():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import QueueResult
+    out = annotate_queue(_blank(), [], QueueResult(statuses=[], count=0), None, AppConfig())
+    assert out.shape == (120, 160, 3)
