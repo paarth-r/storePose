@@ -172,6 +172,8 @@ class QueueAnalyzer:
                 in_line = False  # a checkout beats the line (mutually exclusive)
             which = "mashgin" if in_pos else ("other" if in_alt else None)
             in_check = which is not None
+            dbg = {"speed": round(speed_norm, 3), "transit": transiting,
+                   "line": in_line, "pos": in_pos, "reg": in_alt}
 
             if st.state == "serving":
                 st.serving_seconds += dt
@@ -196,7 +198,7 @@ class QueueAnalyzer:
                     if st.out_streak >= self.exit_seconds:
                         self._finalize(person.id, st, completed)
                         self._states.pop(person.id)
-                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0))
+                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0, debug=dbg))
                         continue
             elif st.state == "waiting":
                 st.waiting_seconds += dt
@@ -215,7 +217,7 @@ class QueueAnalyzer:
                     if st.out_streak >= self.exit_seconds:
                         self._finalize(person.id, st, completed)  # abandoned
                         self._states.pop(person.id)
-                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0))
+                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0, debug=dbg))
                         continue
             else:  # out
                 if in_line or in_check:
@@ -245,6 +247,7 @@ class QueueAnalyzer:
                 # they are neither "in line" nor yet "at a checkout" meanwhile).
                 status = PersonStatus(person.id, False, False, status.progress,
                                       status.wait_seconds, False, st.serving_seconds, False)
+            status.debug = dbg
             statuses.append(status)
 
         # vanished tracks: carry the gap forward into the held state while within

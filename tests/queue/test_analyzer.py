@@ -499,3 +499,14 @@ def test_min_dwell_default_off_preserves_behavior():
     an.update([person(1, box)], 0.01)
     r = an.update([person(1, box)], 0.01)    # tiny dt, but dwell gate off
     assert r.statuses[0].waiting is True
+
+
+def test_status_debug_populated():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, transit_speed=0.4)
+    r = None
+    for x in (40, 70, 100, 130):       # moving -> transiting
+        r = an.update([person(1, _box(x))], 0.5)
+    d = r.statuses[0].debug
+    assert d is not None
+    assert set(d) == {"speed", "transit", "line", "pos", "reg"}
+    assert d["transit"] is True and d["line"] is False
