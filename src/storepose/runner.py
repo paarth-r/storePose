@@ -17,6 +17,7 @@ from .fps import FpsMeter
 from .pipeline import PosePipeline
 from .queue.analyzer import QueueAnalyzer
 from .queue.zone import Zone
+from .tracking.appearance import HsvHistogramAppearance
 from .tracking.tracker import MultiObjectTracker
 from .video_sink import VideoSink
 from .video_source import VideoSource
@@ -51,11 +52,18 @@ class Runner:
                 if config.track:
                     base_fps = source.fps or _DEFAULT_FPS
                     max_age = max(1, round(config.hold_seconds * base_fps))
+                    appearance = (
+                        HsvHistogramAppearance(kpt_thr=config.kpt_thr)
+                        if config.reid else None
+                    )
+                    reid_max_age = max(1, round(config.reid_seconds * base_fps))
                     tracker = MultiObjectTracker(
                         max_age=max_age, min_hits=config.min_hits,
                         iou_thr=config.iou_thr, max_overlap=config.max_overlap,
                         smooth=config.smooth,
                         min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
+                        appearance=appearance, reid=config.reid,
+                        reid_max_age=reid_max_age, reid_thr=config.reid_thr,
                     )
 
                 zone, analyzer = None, None
@@ -107,7 +115,7 @@ class Runner:
                     result = pipeline.process(frame)
                     fps = meter.tick()
                     if tracker is not None:
-                        people = tracker.update(result, dt)
+                        people = tracker.update(result, dt, frame)
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
