@@ -104,3 +104,48 @@ def test_annotate_busy_draws_without_crash_and_keeps_shape():
     out = annotate_busy(frame, "High", 4.0, window_remaining_s=42.0)
     assert out.shape == frame.shape
     assert out.any()  # the badge drew some non-zero pixels
+
+
+def test_queue_waiting_fill_uses_person_color_not_green():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    blue = (255, 0, 0)  # BGR blue person color
+    person = TrackedPerson(id=1, box=np.array([20, 20, 100, 110], float),
+                           keypoints=None, scores=None, coasting=False, color=blue)
+    result = QueueResult(
+        statuses=[PersonStatus(id=1, waiting=True, candidate=False, progress=1.0, wait_seconds=3.4)],
+        count=1,
+    )
+    zone = Zone([(0, 0), (160, 0), (160, 120), (0, 120)])
+    out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
+    cy, cx = 65, 60  # inside the box
+    b, g, r = out[cy, cx]
+    assert b > g and b > r  # tinted toward the person's blue, not green
+
+
+def test_queue_candidate_fill_uses_person_color_not_orange():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    blue = (255, 0, 0)
+    person = TrackedPerson(id=3, box=np.array([20, 20, 100, 110], float),
+                           keypoints=None, scores=None, coasting=False, color=blue)
+    result = QueueResult(
+        statuses=[PersonStatus(id=3, waiting=False, candidate=True, progress=0.9, wait_seconds=0.0)],
+        count=0,
+    )
+    zone = Zone([(0, 0), (160, 0), (160, 120), (0, 120)])
+    out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
+    cy, cx = 100, 60  # inside the rising fill near the box bottom
+    b, g, r = out[cy, cx]
+    assert b > r  # person blue, not orange (orange would have r >= b)
+
+
+def test_palette_has_no_near_orange_color():
+    from storepose.tracking.track import _PALETTE
+    for b, g, r in _PALETTE:
+        # an orange is low-blue, mid/high-green, high-red; ensure none collide
+        assert not (b < 80 and g > 120 and r > 200)

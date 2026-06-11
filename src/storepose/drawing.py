@@ -136,27 +136,27 @@ def annotate_queue(
         x1, y1, x2, y2 = (int(round(v)) for v in p.box[:4])
 
         if s.waiting:
-            # solid translucent green overlay over the whole box
+            # solid translucent fill over the whole box, in the person's color
             overlay = canvas.copy()
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), IN_LINE_COLOR, -1)
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), p.color, -1)
             cv2.addWeighted(overlay, 0.35, canvas, 0.65, 0, canvas)
             tag = f"WAIT {s.wait_seconds:0.1f}s"
             (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
             ty = min(y2 + th + 6, canvas.shape[0] - 2)
-            cv2.rectangle(canvas, (x1, ty - th - 6), (x1 + tw + 6, ty), IN_LINE_COLOR, -1)
+            cv2.rectangle(canvas, (x1, ty - th - 6), (x1 + tw + 6, ty), p.color, -1)
             cv2.putText(canvas, tag, (x1 + 3, ty - 4), cv2.FONT_HERSHEY_SIMPLEX,
                         0.55, (0, 0, 0), 2, cv2.LINE_AA)
         elif s.candidate:
-            # "sheer" amber fill rising from the bottom as inclusion progresses
+            # "sheer" fill rising from the bottom as inclusion progresses
             fill_h = int(round((y2 - y1) * max(0.0, min(s.progress, 1.0))))
             fy1 = y2 - fill_h
             if fill_h > 0:
                 overlay = canvas.copy()
-                cv2.rectangle(overlay, (x1, fy1), (x2, y2), ZONE_COLOR, -1)
+                cv2.rectangle(overlay, (x1, fy1), (x2, y2), p.color, -1)
                 cv2.addWeighted(overlay, 0.4, canvas, 0.6, 0, canvas)
             pct = f"{int(round(s.progress * 100))}%"
             cv2.putText(canvas, pct, (x1 + 3, max(y1 - 6, 12)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, ZONE_COLOR, 2, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, p.color, 2, cv2.LINE_AA)
 
     cv2.putText(canvas, f"in line: {result.count}", (10, 52),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, ZONE_COLOR, 2, cv2.LINE_AA)

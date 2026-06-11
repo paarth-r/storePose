@@ -7,10 +7,11 @@ import numpy as np
 from .kalman import KalmanBoxTracker
 from .smoothing import KeypointSmoother
 
-# Distinct BGR colors cycled by track id.
+# Distinct BGR colors cycled by track id. No near-orange entry, so a person's
+# color never collides with the orange queue zone fill (drawing.ZONE_COLOR).
 _PALETTE: list[tuple[int, int, int]] = [
-    (56, 56, 255), (56, 255, 56), (255, 56, 56), (56, 255, 255),
-    (255, 56, 255), (255, 255, 56), (56, 153, 255), (255, 153, 56),
+    (56, 56, 255), (56, 255, 56), (255, 56, 56), (56, 200, 200),
+    (255, 56, 255), (255, 255, 56), (255, 153, 56), (255, 56, 153),
     (153, 56, 255), (56, 255, 153),
 ]
 
