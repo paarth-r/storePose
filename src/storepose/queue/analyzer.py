@@ -188,7 +188,14 @@ class QueueAnalyzer:
                         st.in_frames = 0
                         st.in_seconds = 0.0
 
-            statuses.append(self._status(person.id, st))
+            status = self._status(person.id, st)
+            if in_pos and status.waiting:
+                # box is in POS: leave the line count instantly (the serving
+                # timer still rides out the pos_enter_frames debounce, so they
+                # are neither "in line" nor yet "at POS" during those frames).
+                status = PersonStatus(person.id, False, False, status.progress,
+                                      status.wait_seconds, False, st.serving_seconds)
+            statuses.append(status)
 
         # vanished tracks: carry the gap forward into the held state while within
         # the re-id grace window; finalize once gone past it.

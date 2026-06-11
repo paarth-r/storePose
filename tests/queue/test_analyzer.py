@@ -183,8 +183,10 @@ def test_pos_entry_debounced():
     an.update([pos_person(1, 40)], 0.5)
     an.update([pos_person(1, 40)], 0.5)              # WAITING
     an.update([pos_person(1, 160)], 0.5)             # in POS frame 1
-    r = an.update([pos_person(1, 160)], 0.5)         # frame 2 (< 3) -> still waiting
-    assert r.statuses[0].waiting is True and r.statuses[0].serving is False
+    r = an.update([pos_person(1, 160)], 0.5)         # frame 2 (< 3): not serving yet
+    # box is in POS, so they've left the line count immediately (debouncing -> neither)
+    assert r.statuses[0].waiting is False and r.statuses[0].serving is False
+    assert r.count == 0
     r2 = an.update([pos_person(1, 160)], 0.5)        # frame 3 -> SERVING
     assert r2.statuses[0].serving is True
 
@@ -195,10 +197,11 @@ def test_pos_graze_resets_and_stays_waiting():
     an.update([pos_person(1, 40)], 0.5)
     an.update([pos_person(1, 40)], 0.5)              # WAITING
     an.update([pos_person(1, 160)], 0.5)             # 1 frame grazing POS
-    an.update([pos_person(1, 40)], 0.5)              # back in line -> pos_frames reset
+    rb = an.update([pos_person(1, 40)], 0.5)         # back in line -> pos_frames reset
+    assert rb.statuses[0].waiting is True            # back in the line count
     an.update([pos_person(1, 160)], 0.5)             # 1
-    r = an.update([pos_person(1, 160)], 0.5)         # 2 (< 3) -> still waiting
-    assert r.statuses[0].waiting is True and r.statuses[0].serving is False
+    r = an.update([pos_person(1, 160)], 0.5)         # 2 (< 3) -> graze never reaches serving
+    assert r.statuses[0].serving is False
 
 
 def test_pos_priority_when_in_both_zones():
