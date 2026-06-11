@@ -112,6 +112,19 @@ def annotate_tracked(
     return canvas
 
 
+def _draw_zone(canvas: np.ndarray, zone: Zone, color: tuple[int, int, int]) -> None:
+    """Fill (faint) and outline every contour of ``zone`` in ``color``."""
+    for poly in zone.polygons:
+        if len(poly) < 2:
+            continue
+        pts = np.array(poly, np.int32).reshape(-1, 1, 2)
+        if len(poly) >= 3:
+            overlay = canvas.copy()
+            cv2.fillPoly(overlay, [pts], color)
+            cv2.addWeighted(overlay, 0.15, canvas, 0.85, 0, canvas)
+        cv2.polylines(canvas, [pts], True, color, 2)
+
+
 def annotate_queue(
     canvas: np.ndarray,
     people: list[TrackedPerson],
@@ -123,21 +136,10 @@ def annotate_queue(
     """Overlay the line zone (orange) and optional POS zone (azure), a
     ``WAIT n.n s`` / ``POS n.n s`` tag per person, and the live
     ``in line: N   at POS: M`` counts. Draws in place and returns ``canvas``."""
-    if zone is not None and len(zone.points) >= 2:
-        pts = np.array(zone.points, np.int32).reshape(-1, 1, 2)
-        if len(zone.points) >= 3:
-            overlay = canvas.copy()
-            cv2.fillPoly(overlay, [pts], ZONE_COLOR)
-            cv2.addWeighted(overlay, 0.15, canvas, 0.85, 0, canvas)
-        cv2.polylines(canvas, [pts], True, ZONE_COLOR, 2)
-
-    if pos_zone is not None and len(pos_zone.points) >= 2:
-        ppts = np.array(pos_zone.points, np.int32).reshape(-1, 1, 2)
-        if len(pos_zone.points) >= 3:
-            overlay = canvas.copy()
-            cv2.fillPoly(overlay, [ppts], POS_COLOR)
-            cv2.addWeighted(overlay, 0.15, canvas, 0.85, 0, canvas)
-        cv2.polylines(canvas, [ppts], True, POS_COLOR, 2)
+    if zone is not None:
+        _draw_zone(canvas, zone, ZONE_COLOR)
+    if pos_zone is not None:
+        _draw_zone(canvas, pos_zone, POS_COLOR)
 
     status_by_id = {s.id: s for s in result.statuses}
     for p in people:

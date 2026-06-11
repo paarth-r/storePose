@@ -177,3 +177,18 @@ def test_annotate_queue_pos_zone_optional():
     from storepose.queue.types import QueueResult
     out = annotate_queue(_blank(), [], QueueResult(statuses=[], count=0), None, AppConfig())
     assert out.shape == (120, 160, 3)
+
+
+def test_annotate_queue_draws_all_contours():
+    from storepose.drawing import annotate_queue
+    from storepose.queue.types import QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()  # 120x160
+    zone = Zone.from_polygons([
+        [(0, 0), (40, 0), (40, 40), (0, 40)],
+        [(110, 70), (150, 70), (150, 110), (110, 110)],
+    ])
+    out = annotate_queue(frame.copy(), [], QueueResult(statuses=[], count=0),
+                         zone, AppConfig())
+    assert out[5, 5].sum() > 0
+    assert out[90, 130].sum() > 0
