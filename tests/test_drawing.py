@@ -222,3 +222,24 @@ def test_pos_panel_absent_when_nobody_serving():
     person, res, zone = _pos_setup(serving=False)
     out = annotate_queue(_blank().copy(), [person], res, zone, AppConfig())
     assert out[95:120, :, :].sum() == 0  # nothing at the bottom
+
+
+def test_annotate_queue_draws_alt_zone_and_reg_tag():
+    from storepose.drawing import annotate_queue, ALT_COLOR
+    from storepose.queue.types import PersonStatus, QueueResult
+    from storepose.queue.zone import Zone
+    frame = _blank()
+    person = TrackedPerson(id=1, box=np.array([20, 20, 100, 110], float),
+                           keypoints=None, scores=None, coasting=False, color=(200, 200, 0))
+    result = QueueResult(
+        statuses=[PersonStatus(id=1, waiting=False, candidate=False, progress=1.0,
+                               wait_seconds=0.0, serving=False, serving_seconds=4.0,
+                               serving_other=True)],
+        count=0, serving_count=0, serving_other_count=1,
+    )
+    line = Zone([(0, 0), (160, 0), (160, 120), (0, 120)])
+    alt = Zone([(80, 0), (160, 0), (160, 120), (80, 120)])
+    out = annotate_queue(frame.copy(), [person], result, line, AppConfig(), alt_zone=alt)
+    assert out.shape == frame.shape
+    # ALT_COLOR is red (high red channel) -> some red pixels from the zone + tag
+    assert (out[:, :, 2] > 120).sum() > 0
