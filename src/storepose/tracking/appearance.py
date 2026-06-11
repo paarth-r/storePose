@@ -21,7 +21,7 @@ class AppearanceModel(Protocol):
     """Extracts a per-person descriptor and scores descriptor similarity."""
 
     def extract(self, frame, box, keypoints, scores) -> np.ndarray | None: ...
-    def similarity(self, a: np.ndarray, b: np.ndarray) -> float: ...
+    def similarity(self, a: np.ndarray | None, b: np.ndarray | None) -> float: ...
 
 
 def _torso_rect(box, keypoints, scores, kpt_thr) -> tuple[int, int, int, int]:
@@ -49,14 +49,16 @@ class HsvHistogramAppearance:
     def extract(self, frame, box, keypoints, scores) -> np.ndarray | None:
         h_img, w_img = frame.shape[:2]
         rx1, ry1, rx2, ry2 = _torso_rect(box, keypoints, scores, self.kpt_thr)
-        rx1 = max(0, min(rx1, w_img - 1)); rx2 = max(0, min(rx2, w_img))
-        ry1 = max(0, min(ry1, h_img - 1)); ry2 = max(0, min(ry2, h_img))
+        rx1 = max(0, min(rx1, w_img - 1))
+        rx2 = max(0, min(rx2, w_img))
+        ry1 = max(0, min(ry1, h_img - 1))
+        ry2 = max(0, min(ry2, h_img))
         if rx2 - rx1 < 2 or ry2 - ry1 < 2:
             return None
         hsv = cv2.cvtColor(frame[ry1:ry2, rx1:rx2], cv2.COLOR_BGR2HSV)
         s, v = hsv[:, :, 1], hsv[:, :, 2]
         mask = ((s >= _SAT_MIN) & (v >= _VAL_MIN) & (v <= _VAL_MAX)).astype(np.uint8) * 255
-        if int(mask.sum()) == 0:
+        if not mask.any():
             return None
         hist = cv2.calcHist([hsv], [0, 1], mask, [_H_BINS, _S_BINS], [0, 180, 0, 256])
         cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)

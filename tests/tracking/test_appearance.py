@@ -50,3 +50,12 @@ def test_degenerate_crop_returns_none():
     assert app.extract(f, np.array([10, 10, 60, 120], float), None, None) is None
     tiny = app.extract(f, np.array([10, 10, 11, 11], float), None, None)
     assert tiny is None
+
+
+def test_similarity_with_none_inputs():
+    app = HsvHistogramAppearance(kpt_thr=0.5)
+    valid = app.extract(_frame_with_rect((0, 0, 220), 40, 40, 120, 160),
+                        np.array([40, 40, 120, 160], float), None, None)
+    assert valid is not None
+    assert app.similarity(None, None) == -1.0
+    assert app.similarity(None, valid) == -1.0
