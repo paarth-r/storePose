@@ -177,7 +177,20 @@ class QueueAnalyzer:
                 st.serving_seconds += dt
                 if in_check:
                     st.out_streak = 0.0
-                    st.checkout = which
+                    if which == st.checkout:
+                        st.pos_frames = 0
+                    else:
+                        # moved toward the *other* checkout: once it's sustained,
+                        # close out this visit and start a fresh timer there (the
+                        # serving timer must not persist across checkouts).
+                        st.pos_frames += 1
+                        if st.pos_frames >= self.pos_enter_frames:
+                            self._finalize(person.id, st, completed)
+                            st.serving_seconds = 0.0
+                            st.waiting_seconds = 0.0
+                            st.entered_s = self._clock
+                            st.checkout = which
+                            st.pos_frames = 0
                 else:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:

@@ -250,6 +250,25 @@ def test_mashgin_checkout_serves_mashgin():
     assert r.serving_count == 1 and r.serving_other_count == 0
 
 
+def test_serving_timer_resets_when_switching_checkouts():
+    # Served at Mashgin, then moves to the non-Mashgin register: the Mashgin visit
+    # is finalized and a fresh timer starts at the register (no carry-over).
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=2.0, pos_enter_frames=2, transit_speed=0.0)
+    completed = []
+    for _ in range(6):                       # serving at Mashgin a while
+        completed += an.update([alt_person(1, 175)], 0.5).completed
+    r = None
+    for _ in range(4):                       # move to the non-Mashgin register
+        r = an.update([alt_person(1, 30)], 0.5)
+        completed += r.completed
+    mash = [c for c in completed if c.outcome == "served"]
+    assert len(mash) == 1                    # the Mashgin visit was closed out
+    assert mash[0].serving_seconds > 0
+    assert r.statuses[0].serving_other is True            # now at the register
+    assert r.statuses[0].serving_seconds < mash[0].serving_seconds  # fresh timer
+
+
 def test_checkout_priority_mashgin_over_non_mashgin():
     overlap_alt = Zone([(140, 0), (200, 0), (200, 200), (140, 200)])  # overlaps MPOS
     an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=overlap_alt, enter_frames=2,
