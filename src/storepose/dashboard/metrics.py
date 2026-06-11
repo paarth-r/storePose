@@ -51,11 +51,31 @@ def throughput_series(visits: list, bucket: float = 60.0) -> dict:
     }
 
 
+def summary_stats(occ: list, visits: list) -> dict:
+    """Headline numbers: current occupancy + average line/POS/total times."""
+    in_line = occ[-1][1] if occ else 0
+    at_pos = occ[-1][2] if occ else 0
+    served = [v for v in visits if v.outcome == "served"]
+    n = len(served)
+    if n:
+        avg_line = sum(v.wait_seconds for v in served) / n
+        avg_pos = sum(v.serving_seconds for v in served) / n
+        avg_total = sum(v.wait_seconds + v.serving_seconds for v in served) / n
+    else:
+        avg_line = avg_pos = avg_total = 0.0
+    return {
+        "in_line": in_line, "at_pos": at_pos,
+        "avg_line_s": avg_line, "avg_pos_s": avg_pos, "avg_total_s": avg_total,
+        "served_count": n,
+    }
+
+
 def build_payload(snapshot: tuple[list, list]) -> dict:
     occ, visits = snapshot
     now = occ[-1][0] if occ else 0.0
     return {
         "now": now,
+        "summary": summary_stats(occ, visits),
         "occupancy": occupancy_series(occ),
         "wait_serve": wait_serve_series(visits),
         "throughput": throughput_series(visits),

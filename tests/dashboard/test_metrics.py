@@ -1,5 +1,6 @@
 from storepose.dashboard.metrics import (
-    moving_average, occupancy_series, wait_serve_series, throughput_series, build_payload,
+    moving_average, occupancy_series, wait_serve_series, throughput_series,
+    summary_stats, build_payload,
 )
 from storepose.dashboard.state import Visit
 
@@ -37,4 +38,24 @@ def test_build_payload_keys():
     occ = [(0.0, 1, 0)]
     visits = [Visit(0.0, 2.0, 1.0, "served")]
     p = build_payload((occ, visits))
-    assert set(p) >= {"occupancy", "wait_serve", "throughput"}
+    assert set(p) >= {"occupancy", "wait_serve", "throughput", "summary"}
+
+
+def test_summary_stats():
+    from storepose.dashboard.metrics import summary_stats
+    occ = [(0.0, 2, 1), (1.0, 3, 2)]
+    visits = [Visit(1.0, 10.0, 4.0, "served"),
+              Visit(2.0, 6.0, 2.0, "served"),
+              Visit(3.0, 5.0, 0.0, "abandoned")]
+    s = summary_stats(occ, visits)
+    assert s["in_line"] == 3 and s["at_pos"] == 2
+    assert s["avg_line_s"] == 8.0    # (10 + 6) / 2
+    assert s["avg_pos_s"] == 3.0     # (4 + 2) / 2
+    assert s["avg_total_s"] == 11.0  # (14 + 8) / 2
+    assert s["served_count"] == 2
+
+
+def test_summary_stats_empty():
+    s = summary_stats([], [])
+    assert s == {"in_line": 0, "at_pos": 0, "avg_line_s": 0.0,
+                 "avg_pos_s": 0.0, "avg_total_s": 0.0, "served_count": 0}
