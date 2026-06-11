@@ -31,11 +31,24 @@ def test_parses_flags():
         {"device": "cuda"},
         {"det_conf": 1.5},
         {"kpt_thr": -0.1},
+        {"busy_window": 0},
+        {"busy_metric": "vibes"},
+        {"busy_medium_max": 1.0, "busy_low_max": 2.0},
+        {"busy_hysteresis": -0.5},
     ],
 )
 def test_rejects_invalid(kwargs):
     with pytest.raises(ValueError):
         AppConfig(**kwargs)
+
+
+def test_busy_log_implies_busy():
+    cfg = from_args(["--busy-log", "out.csv", "--busy-metric", "mean_wait",
+                     "--busy-window", "300"])
+    assert cfg.busy is True
+    assert cfg.busy_log == "out.csv"
+    assert cfg.busy_metric == "mean_wait"
+    assert cfg.busy_window == 300.0
 
 
 def test_invalid_choice_exits():

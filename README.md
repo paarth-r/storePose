@@ -19,6 +19,9 @@ This creates a Python 3.12 virtualenv and installs all dependencies. Models
 
 ## Run
 
+> Quickstart with copy-paste commands for running, zone setup, and the busy
+> signal: [`docs/usage.md`](docs/usage.md).
+
 ```bash
 uv run python main.py                       # default webcam, balanced, CoreML
 uv run python main.py --source 1            # a different camera
@@ -56,7 +59,16 @@ Press **`q`** or **Esc** in the window to quit.
 | `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
 | `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
+| `--wait-min-dwell`     | `0.0` | Min in-zone dwell (s) before counting as in line; rejects pass-through bystanders. |
 | `--wait-log`     | —       | Append completed waits to this CSV.               |
+| `--busy`         | —       | Show a live Low/Medium/High busy badge (needs `--zone`). |
+| `--busy-log`     | —       | Write the per-window busy report to this CSV (implies `--busy`). |
+| `--busy-window`  | `600`   | Busy aggregation window, seconds (600 = 10 min).  |
+| `--busy-subwindow` | `0.0` | Two-level smoothing sub-window, seconds; 0 = off (e.g. 60 = per-minute robust estimate). |
+| `--busy-metric`  | `occupancy_p90` | Window feature driving the label.         |
+| `--busy-low-max` | `1.0`   | Upper bound of the LOW band (metric units). Calibrate. |
+| `--busy-medium-max` | `3.0` | Upper bound of the MEDIUM band (metric units). Calibrate. |
+| `--busy-hysteresis` | `0.0` | Cross-window deadband to suppress label flapping. |
 
 ## Tracking & smoothing
 
@@ -108,6 +120,48 @@ noise), so in-line boxes are stable. The CSV rows are
 
 Requires tracking (on by default) — waiting state is keyed by stable id.
 
+## How busy is the line? (busy signal)
+
+The headline question: given store video, **how busy is the checkout line?**
+storePose answers it as a stable **Low / Medium / High** label per **10-minute
+window**, by aggregating the noisy per-frame waiting count into a robust
+per-window statistic and mapping it to a band.
+
+```bash
+# live: badge on screen + per-window report written at exit
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json \
+    --busy-log busy.csv
+
+# offline: turn an existing wait log into per-window labels
+uv run python busy_report.py aggregate waits.csv --window 600 -o busy.csv
+
+# hand-label a video's windows to build a ground-truth set (resumable)
+uv run python busy_report.py label videos/clip.mp4 -o truth.csv --window 600
+
+# score predicted labels against the ground-truth CSV
+uv run python busy_report.py eval busy.csv truth.csv
+```
+
+The label is driven by a **time-weighted robust statistic** of occupancy (the
+90th-percentile waiting count by default), which ignores 1–2-second flicker but
+reacts to a sustained crowd. Two further stabilizers: `--busy-subwindow` adds
+**two-level smoothing** (compute the metric per short sub-window, then take the
+median across the window, so one busy minute can't dominate), and
+`--busy-hysteresis` adds a cross-window deadband so the output doesn't oscillate
+near a threshold. Bystanders who merely pass through the line zone are rejected
+by `--wait-min-dwell` (a person must linger N seconds before counting).
+
+The `label` command steps through a video window-by-window and records your
+Low/Medium/High judgement to a `window_index,level` CSV — resumable, and exactly
+the format `eval` consumes. The band thresholds
+(`--busy-low-max`, `--busy-medium-max`) are **placeholders that must be
+calibrated** on real footage against a labeled evaluation set.
+
+See [`docs/problem-definition.md`](docs/problem-definition.md) for the precise
+definition of Low/Medium/High, the alternatives considered (occupancy vs.
+parties vs. wait-time), and the evaluation plan (ordinal metrics, ground-truth
+labeling, cross-store protocol).
+
 ## Performance
 
 Measured on an Apple M5 Max (`balanced` mode). Top-down pose runs once per
@@ -138,6 +192,9 @@ src/storepose/
   runner.py        capture -> process -> (track) -> annotate -> display loop
   tracking/        SORT tracker: assignment, kalman, smoothing, track, tracker
   queue/           zone, analyzer (waiting state machine), zone_editor
+  busy/            occupancy timeline, BusyAggregator (window -> Low/Med/High)
+  eval/            ordinal metrics + ground-truth labeling helpers
+busy_report.py     offline CLI: aggregate waits.csv, label video, eval vs. truth
 ```
 
 Each stage has one job and a clean interface; detector and pose are injectable,

@@ -17,6 +17,7 @@ class _WaitState:
     wait_seconds: float = 0.0
     entered_s: float = 0.0
     in_frames: int = 0
+    in_seconds: float = 0.0
     out_streak: float = 0.0
 
 
@@ -24,9 +25,13 @@ class QueueAnalyzer:
     """Decides whether each tracked person is waiting in the zone.
 
     A person is *waiting* once they are in the zone for at least ``enter_frames``
-    consecutive frames; before that they are a *candidate* with a 0..1 inclusion
-    ``progress``. There is no motion gating — people in line move around (fetching
-    items, carts), so presence in the zone is what counts. They stop waiting after
+    consecutive frames *and* ``min_dwell_seconds`` of accumulated in-zone time;
+    before that they are a *candidate* with a 0..1 inclusion ``progress``. The
+    dwell gate is framerate-independent and is the bystander filter: someone who
+    merely walks through the zone never accrues enough dwell to count, while
+    people in line (who linger) do. There is still no *motion* gating — people in
+    line move around (fetching items, carts), so presence over time is what
+    counts, not stillness. They stop waiting after
     ``exit_seconds`` of being out of the zone, or when their track disappears.
     ``count`` is the number currently waiting; finished waits are reported in
     :attr:`QueueResult.completed`.
@@ -40,10 +45,12 @@ class QueueAnalyzer:
         kpt_thr: float = 0.5,
         coverage_thr: float = 0.5,
         foot_band: float = 0.3,
+        min_dwell_seconds: float = 0.0,
     ):
         self.zone = zone
         self.enter_frames = max(1, enter_frames)
         self.exit_seconds = exit_seconds
+        self.min_dwell_seconds = max(0.0, min_dwell_seconds)
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
         self.foot_band = foot_band
@@ -109,12 +116,20 @@ class QueueAnalyzer:
                         st.waiting = False
                         st.wait_seconds = 0.0
                         st.in_frames = 0
+                        st.in_seconds = 0.0
                         st.out_streak = 0.0
             else:
                 if in_cond:
                     st.out_streak = 0.0
                     st.in_frames += 1
-                    if st.in_frames >= self.enter_frames:
+                    st.in_seconds += dt
+                    # Two gates: enough consecutive frames AND enough dwell time.
+                    # The dwell gate is framerate-independent and rejects
+                    # bystanders who only pass through the zone.
+                    if (
+                        st.in_frames >= self.enter_frames
+                        and st.in_seconds >= self.min_dwell_seconds
+                    ):
                         st.waiting = True
                         st.entered_s = self._clock
                         st.wait_seconds = 0.0
@@ -122,9 +137,13 @@ class QueueAnalyzer:
                     st.out_streak += dt
                     if st.out_streak >= self.exit_seconds:
                         st.in_frames = 0  # candidate truly gone; reset progress
+                        st.in_seconds = 0.0
 
             candidate = not st.waiting and st.in_frames > 0
-            progress = 1.0 if st.waiting else min(st.in_frames / self.enter_frames, 1.0)
+            frame_progress = st.in_frames / self.enter_frames
+            if self.min_dwell_seconds > 0:
+                frame_progress = min(frame_progress, st.in_seconds / self.min_dwell_seconds)
+            progress = 1.0 if st.waiting else min(frame_progress, 1.0)
             statuses.append(
                 PersonStatus(person.id, st.waiting, candidate, progress, st.wait_seconds)
             )

@@ -188,3 +188,41 @@ def test_standing_person_triggers_via_foot_region_coverage():
     an.update([person(1, box)], 0.5)
     r = an.update([person(1, box)], 0.5)
     assert r.statuses[0].waiting is True
+
+
+def test_min_dwell_rejects_passerby():
+    # enter_frames satisfied quickly, but dwell gate (2s) not met -> bystander
+    # who passes through is NOT counted as waiting.
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, min_dwell_seconds=2.0)
+    box = [40, 40, 60, 80]  # inside zone
+    r1 = an.update([person(1, box)], 0.1)   # in_frames 1, dwell 0.1
+    r2 = an.update([person(1, box)], 0.1)   # in_frames 2 (>=2) but dwell 0.2 < 2.0
+    assert r2.statuses[0].waiting is False
+    assert r2.statuses[0].candidate is True
+    assert r1.statuses[0].progress < 1.0
+
+
+def test_min_dwell_admits_lingerer():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, min_dwell_seconds=2.0)
+    box = [40, 40, 60, 80]
+    r = None
+    for _ in range(25):                      # 25 * 0.1 = 2.5s of dwell
+        r = an.update([person(1, box)], 0.1)
+    assert r.statuses[0].waiting is True
+
+
+def test_min_dwell_progress_tracks_slower_gate():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, min_dwell_seconds=1.0)
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.1)         # frames 1/2=0.5, dwell 0.1/1.0=0.1
+    r = an.update([person(1, box)], 0.1)     # frames 2/2=1.0, dwell 0.2/1.0=0.2
+    # progress is the slower (dwell) gate
+    assert abs(r.statuses[0].progress - 0.2) < 1e-6
+
+
+def test_min_dwell_default_off_preserves_behavior():
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0)  # default dwell 0
+    box = [40, 40, 60, 80]
+    an.update([person(1, box)], 0.01)
+    r = an.update([person(1, box)], 0.01)    # tiny dt, but dwell gate off
+    assert r.statuses[0].waiting is True

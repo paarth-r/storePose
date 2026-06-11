@@ -8,8 +8,11 @@ from contextlib import ExitStack
 
 import cv2
 
+from .busy.aggregator import BusyAggregator
+from .busy.report import write_busy
+from .busy.types import BusyThresholds
 from .config import AppConfig
-from .drawing import annotate, annotate_queue, annotate_tracked
+from .drawing import annotate, annotate_busy, annotate_queue, annotate_tracked
 from .fps import FpsMeter
 from .pipeline import PosePipeline
 from .queue.analyzer import QueueAnalyzer
@@ -68,7 +71,24 @@ class Runner:
                             kpt_thr=config.kpt_thr,
                             coverage_thr=config.zone_coverage,
                             foot_band=config.zone_foot_band,
+                            min_dwell_seconds=config.wait_min_dwell,
                         )
+
+                busy = None
+                if config.busy and analyzer is not None:
+                    busy = BusyAggregator(
+                        BusyThresholds(
+                            metric=config.busy_metric,
+                            low_max=config.busy_low_max,
+                            medium_max=config.busy_medium_max,
+                            hysteresis=config.busy_hysteresis,
+                        ),
+                        window_seconds=config.busy_window,
+                        sub_window_seconds=config.busy_subwindow or None,
+                    )
+                elif config.busy:
+                    print("Note: --busy needs an active --zone; ignoring.")
+                clock = 0.0
 
                 wait_writer = None
                 if config.wait_log and analyzer is not None:
@@ -98,6 +118,14 @@ class Runner:
                                         [c.id, f"{c.entered_s:.2f}", f"{c.exited_s:.2f}",
                                          f"{c.wait_seconds:.2f}"]
                                     )
+                            if busy is not None:
+                                clock += dt
+                                busy.observe(clock, qresult.count, dt)
+                                for c in qresult.completed:
+                                    busy.add_wait(c)
+                                level, value = busy.estimate(clock)
+                                remaining = config.busy_window - (clock % config.busy_window)
+                                canvas = annotate_busy(canvas, level.label, value, remaining)
                     else:
                         canvas = annotate(frame, result, config, fps)
 
@@ -106,6 +134,10 @@ class Runner:
                     cv2.imshow(WINDOW_NAME, canvas)
                     if cv2.waitKey(1) & 0xFF in _QUIT_KEYS:
                         break
+                if config.busy_log and busy is not None:
+                    windows = busy.windows()
+                    write_busy(config.busy_log, windows)
+                    print(f"Wrote busy report ({len(windows)} window(s)) to {config.busy_log}")
         except KeyboardInterrupt:
             pass
         finally:

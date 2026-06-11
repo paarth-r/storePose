@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
+from .busy.types import METRICS as BUSY_METRICS
+
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
 
@@ -39,6 +41,14 @@ class AppConfig:
         zone_foot_band: Bottom fraction of the box treated as the foot region
             for coverage.
         wait_log: Optional CSV path to append completed waits.
+        busy: Aggregate occupancy into a Low/Medium/High busy signal and show a
+            live badge (requires an active zone).
+        busy_log: Optional CSV path for the per-window busy report at exit.
+        busy_window: Busy aggregation window length in seconds (default 600=10m).
+        busy_metric: Window feature that drives the label (see busy.types.METRICS).
+        busy_low_max: Upper bound of the LOW band (metric units). Calibrate.
+        busy_medium_max: Upper bound of the MEDIUM band (metric units). Calibrate.
+        busy_hysteresis: Cross-window deadband to suppress label flapping.
     """
 
     source: int | str = 0
@@ -62,7 +72,16 @@ class AppConfig:
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
     zone_foot_band: float = 0.3
+    wait_min_dwell: float = 0.0
     wait_log: str | None = None
+    busy: bool = False
+    busy_log: str | None = None
+    busy_window: float = 600.0
+    busy_subwindow: float = 0.0
+    busy_metric: str = "occupancy_p90"
+    busy_low_max: float = 1.0
+    busy_medium_max: float = 3.0
+    busy_hysteresis: float = 0.0
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -93,6 +112,19 @@ class AppConfig:
             raise ValueError(f"zone_coverage must be in [0, 1], got {self.zone_coverage}")
         if not 0.0 < self.zone_foot_band <= 1.0:
             raise ValueError(f"zone_foot_band must be in (0, 1], got {self.zone_foot_band}")
+        if self.wait_min_dwell < 0:
+            raise ValueError(f"wait_min_dwell must be >= 0, got {self.wait_min_dwell}")
+        from .busy.types import METRICS  # local import avoids package import cost
+        if self.busy_window <= 0:
+            raise ValueError(f"busy_window must be > 0, got {self.busy_window}")
+        if self.busy_subwindow < 0:
+            raise ValueError(f"busy_subwindow must be >= 0, got {self.busy_subwindow}")
+        if self.busy_metric not in METRICS:
+            raise ValueError(f"busy_metric must be one of {METRICS}, got {self.busy_metric!r}")
+        if self.busy_medium_max < self.busy_low_max:
+            raise ValueError("busy_medium_max must be >= busy_low_max")
+        if self.busy_hysteresis < 0:
+            raise ValueError(f"busy_hysteresis must be >= 0, got {self.busy_hysteresis}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -209,8 +241,47 @@ def _build_parser() -> argparse.ArgumentParser:
              "(default: 0.3).",
     )
     parser.add_argument(
+        "--wait-min-dwell", type=float, default=0.0,
+        help="Minimum in-zone dwell (seconds) before counting as in line; "
+             "rejects pass-through bystanders (default: 0 = off).",
+    )
+    parser.add_argument(
         "--wait-log", default=None, metavar="PATH",
         help="Append completed waits (id, entered, exited, seconds) as CSV.",
+    )
+    parser.add_argument(
+        "--busy", action="store_true",
+        help="Aggregate occupancy into a live Low/Medium/High busy badge "
+             "(needs an active --zone).",
+    )
+    parser.add_argument(
+        "--busy-log", default=None, metavar="PATH",
+        help="Write the per-window busy report to this CSV at exit (implies --busy).",
+    )
+    parser.add_argument(
+        "--busy-window", type=float, default=600.0,
+        help="Busy aggregation window in seconds (default: 600 = 10 min).",
+    )
+    parser.add_argument(
+        "--busy-subwindow", type=float, default=0.0,
+        help="Sub-window length in seconds for two-level smoothing; 0 disables "
+             "(e.g. 60 = per-minute robust estimate, median across the window).",
+    )
+    parser.add_argument(
+        "--busy-metric", choices=BUSY_METRICS, default="occupancy_p90",
+        help="Window feature that drives the busy label (default: occupancy_p90).",
+    )
+    parser.add_argument(
+        "--busy-low-max", type=float, default=1.0,
+        help="Upper bound of the LOW band, in metric units (default: 1.0). Calibrate.",
+    )
+    parser.add_argument(
+        "--busy-medium-max", type=float, default=3.0,
+        help="Upper bound of the MEDIUM band, in metric units (default: 3.0). Calibrate.",
+    )
+    parser.add_argument(
+        "--busy-hysteresis", type=float, default=0.0,
+        help="Cross-window deadband to suppress busy-label flapping (default: 0).",
     )
     return parser
 
@@ -240,5 +311,14 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,
         zone_foot_band=args.zone_foot_band,
+        wait_min_dwell=args.wait_min_dwell,
         wait_log=args.wait_log,
+        busy=args.busy or args.busy_log is not None,
+        busy_log=args.busy_log,
+        busy_window=args.busy_window,
+        busy_subwindow=args.busy_subwindow,
+        busy_metric=args.busy_metric,
+        busy_low_max=args.busy_low_max,
+        busy_medium_max=args.busy_medium_max,
+        busy_hysteresis=args.busy_hysteresis,
     )

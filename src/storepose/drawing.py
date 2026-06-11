@@ -161,3 +161,31 @@ def annotate_queue(
     cv2.putText(canvas, f"in line: {result.count}", (10, 52),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, ZONE_COLOR, 2, cv2.LINE_AA)
     return canvas
+
+
+# BGR badge color per busy level.
+_BUSY_COLORS = {"Low": (0, 200, 0), "Medium": (0, 200, 255), "High": (0, 0, 255)}
+
+
+def annotate_busy(
+    canvas: np.ndarray, level_label: str, metric_value: float, window_remaining_s: float
+) -> np.ndarray:
+    """Top-right badge showing the *current window's* live busy estimate.
+
+    This is the running label for the in-progress window, not a finalized one,
+    so it can change as the window fills; the authoritative per-window labels are
+    written to the busy report at the end."""
+    color = _BUSY_COLORS.get(level_label, (200, 200, 200))
+    text = f"BUSY: {level_label.upper()}"
+    sub = f"~{metric_value:.1f}  next in {window_remaining_s:0.0f}s"
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+    (sw, _sh), _ = cv2.getTextSize(sub, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+    w = max(tw, sw) + 16
+    x0 = canvas.shape[1] - w - 10
+    cv2.rectangle(canvas, (x0, 10), (x0 + w, 10 + th + 28), (0, 0, 0), -1)
+    cv2.rectangle(canvas, (x0, 10), (x0 + w, 10 + th + 28), color, 2)
+    cv2.putText(canvas, text, (x0 + 8, 10 + th + 4), cv2.FONT_HERSHEY_SIMPLEX,
+                0.7, color, 2, cv2.LINE_AA)
+    cv2.putText(canvas, sub, (x0 + 8, 10 + th + 22), cv2.FONT_HERSHEY_SIMPLEX,
+                0.45, (200, 200, 200), 1, cv2.LINE_AA)
+    return canvas

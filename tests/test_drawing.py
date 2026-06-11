@@ -1,7 +1,7 @@
 import numpy as np
 
 from storepose.config import AppConfig
-from storepose.drawing import annotate, annotate_tracked
+from storepose.drawing import annotate, annotate_busy, annotate_tracked
 from storepose.pipeline import FrameResult
 from storepose.pose import NUM_KEYPOINTS
 from storepose.tracking.types import TrackedPerson
@@ -97,3 +97,10 @@ def test_annotate_queue_candidate_fill_draws():
     out = annotate_queue(frame.copy(), [person], result, zone, AppConfig())
     assert out.shape == frame.shape
     assert not np.array_equal(out, frame)  # candidate fill drawn
+
+
+def test_annotate_busy_draws_without_crash_and_keeps_shape():
+    frame = _blank()
+    out = annotate_busy(frame, "High", 4.0, window_remaining_s=42.0)
+    assert out.shape == frame.shape
+    assert out.any()  # the badge drew some non-zero pixels
