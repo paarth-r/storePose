@@ -57,6 +57,8 @@ class AppConfig:
         busy_low_max: Upper bound of the LOW band (metric units). Calibrate.
         busy_medium_max: Upper bound of the MEDIUM band (metric units). Calibrate.
         busy_hysteresis: Cross-window deadband to suppress label flapping.
+        dashboard: Serve the live web dashboard during the run.
+        dashboard_port: Port for the dashboard HTTP server.
     """
 
     source: int | str = 0
@@ -97,6 +99,8 @@ class AppConfig:
     busy_low_max: float = 1.0
     busy_medium_max: float = 3.0
     busy_hysteresis: float = 0.0
+    dashboard: bool = True
+    dashboard_port: int = 8000
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -146,6 +150,8 @@ class AppConfig:
             raise ValueError("busy_medium_max must be >= busy_low_max")
         if self.busy_hysteresis < 0:
             raise ValueError(f"busy_hysteresis must be >= 0, got {self.busy_hysteresis}")
+        if not 1 <= self.dashboard_port <= 65535:
+            raise ValueError(f"dashboard_port must be in [1, 65535], got {self.dashboard_port}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -336,6 +342,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--busy-hysteresis", type=float, default=0.0,
         help="Cross-window deadband to suppress busy-label flapping (default: 0).",
     )
+    parser.add_argument(
+        "--no-dashboard", dest="dashboard", action="store_false",
+        help="Disable the live web dashboard.",
+    )
+    parser.add_argument(
+        "--dashboard-port", type=int, default=8000,
+        help="Port for the live dashboard HTTP server (default: 8000).",
+    )
     return parser
 
 
@@ -381,4 +395,6 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         busy_low_max=args.busy_low_max,
         busy_medium_max=args.busy_medium_max,
         busy_hysteresis=args.busy_hysteresis,
+        dashboard=args.dashboard,
+        dashboard_port=args.dashboard_port,
     )

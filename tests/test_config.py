@@ -206,3 +206,19 @@ def test_pos_enter_frames_default_and_parse():
 def test_pos_enter_frames_must_be_positive():
     with pytest.raises(ValueError):
         AppConfig(pos_enter_frames=0)
+
+
+def test_dashboard_defaults_on():
+    cfg = from_args([])
+    assert cfg.dashboard is True
+    assert cfg.dashboard_port == 8000
+
+
+def test_no_dashboard_and_port():
+    assert from_args(["--no-dashboard"]).dashboard is False
+    assert from_args(["--dashboard-port", "9001"]).dashboard_port == 9001
+
+
+def test_dashboard_port_range_validated():
+    with pytest.raises(ValueError):
+        AppConfig(dashboard_port=70000)
