@@ -77,3 +77,15 @@ def test_busy_series_empty_and_payload():
     assert busy_series(None, [])["current"]["level"] is None
     p = build_payload(([(0.0, 1, 0)], []), ((0.0, "Low", 0.5), [(0.0, "Low", 0.5)]))
     assert p["busy"]["current"]["level"] == "Low"
+
+
+def test_checkout_stats_and_payload():
+    from storepose.dashboard.metrics import checkout_stats
+    visits = [Visit(1.0, 5.0, 10.0, "served"), Visit(2.0, 4.0, 20.0, "served"),
+              Visit(3.0, 6.0, 40.0, "served_other"), Visit(4.0, 2.0, 0.0, "abandoned")]
+    s = checkout_stats(visits)
+    assert s["mashgin_avg"] == 15.0 and s["mashgin_n"] == 2   # (10 + 20) / 2
+    assert s["other_avg"] == 40.0 and s["other_n"] == 1
+    assert s["delta"] == 25.0                                  # 40 - 15
+    p = build_payload(([(0.0, 1, 0)], visits))
+    assert p["checkouts"]["mashgin_n"] == 2 and "series" in p["checkouts"]
