@@ -18,7 +18,8 @@ def test_server_serves_page_and_metrics():
     server.start()
     try:
         status, body = _get(server.url)
-        assert status == 200 and "<canvas" in body
+        assert status == 200
+        assert "storePose" in body and "chart-occ" in body and "echarts" in body
         status, body = _get(server.url + "metrics")
         assert status == 200
         payload = json.loads(body)
