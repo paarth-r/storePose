@@ -17,9 +17,10 @@ table: scroll views, toggle per-view flag columns, Enter to run.
 - **Language:** Python `curses` (stdlib, no new deps). `video-run.sh` becomes a
   thin wrapper that `exec`s the launcher. Curses exits before the run starts.
 - **Rows:** saved views = `viewscripts/*.sh` stems (same source as today).
-- **Columns:** `dashboard` (on/off) · `debug` (on/off) · `calib` (on/off) ·
-  `strategy` (cycle: auto→skewed→thirds→peak). `busy` stays always-on (baked into
-  the view) and is shown as a static indicator, not a toggle.
+- **Columns:** `dashboard` (on/off) · `debug` (on/off) · `conf` (on/off,
+  `--conf` detector-confidence overlay) · `calib` (on/off) · `strategy` (cycle:
+  auto→skewed→thirds→peak). `busy` stays always-on (baked into the view) and is
+  **not** shown — the table lists only toggleable columns.
 - **State:** reset each launch (no persistence file). Defaults: dashboard on,
   debug off, calib on iff `calib/<stem>.json` exists, strategy auto.
 - **Launch model:** forward toggles to the existing viewscript (keep it the single

@@ -36,6 +36,8 @@ def _cell(view: View, state, column: Column) -> str:
         return "on" if state.dashboard else "·"
     if column == Column.DEBUG:
         return "on" if state.debug else "·"
+    if column == Column.CONF:
+        return "on" if state.conf else "·"
     if column == Column.CALIB:
         return "—" if not view.has_calib else ("on" if state.calib else "·")
     if column == Column.STRATEGY:
@@ -56,9 +58,8 @@ def _draw(stdscr, views, states, row, col, name_w) -> None:
     # header
     hx = 2 + name_w
     _safe_add(stdscr, 2, 2, "view".ljust(name_w), curses.A_UNDERLINE)
-    _safe_add(stdscr, 2, hx, "busy".center(_FLAG_W), curses.A_UNDERLINE)
     for i, c in enumerate(COLUMNS):
-        _safe_add(stdscr, 2, hx + (i + 1) * _FLAG_W,
+        _safe_add(stdscr, 2, hx + i * _FLAG_W,
                   COLUMN_LABELS[c].center(_FLAG_W), curses.A_UNDERLINE)
     # rows
     for r, view in enumerate(views):
@@ -67,9 +68,8 @@ def _draw(stdscr, views, states, row, col, name_w) -> None:
         marker = "> " if r == row else "  "
         _safe_add(stdscr, y, 0, marker + view.stem[:name_w].ljust(name_w),
                   curses.A_BOLD if r == row else 0)
-        _safe_add(stdscr, y, hx, "on".center(_FLAG_W), curses.A_DIM)  # busy: static
         for i, c in enumerate(COLUMNS):
-            cx = hx + (i + 1) * _FLAG_W
+            cx = hx + i * _FLAG_W
             attr = curses.A_REVERSE if (r == row and i == col) else 0
             _safe_add(stdscr, y, cx, _cell(view, st, c).center(_FLAG_W), attr)
     # footer

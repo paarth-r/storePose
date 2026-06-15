@@ -22,14 +22,16 @@ STRATEGY_CYCLE = ("auto", *BUSY_STRATEGIES)
 class Column(IntEnum):
     DASHBOARD = 0
     DEBUG = 1
-    CALIB = 2
-    STRATEGY = 3
+    CONF = 2
+    CALIB = 3
+    STRATEGY = 4
 
 
-COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CALIB, Column.STRATEGY)
+COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.CALIB, Column.STRATEGY)
 COLUMN_LABELS = {
     Column.DASHBOARD: "dash",
     Column.DEBUG: "debug",
+    Column.CONF: "conf",
     Column.CALIB: "calib",
     Column.STRATEGY: "strategy",
 }
@@ -50,6 +52,7 @@ class ColumnState:
 
     dashboard: bool = True
     debug: bool = False
+    conf: bool = False
     calib: bool = False
     strategy: str = "auto"
 
@@ -68,7 +71,8 @@ def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path) -> list[V
 def default_state(view: View) -> ColumnState:
     """Per-launch defaults: dashboard on, debug off, calib on iff a file exists."""
     return ColumnState(
-        dashboard=True, debug=False, calib=view.has_calib, strategy="auto"
+        dashboard=True, debug=False, conf=False,
+        calib=view.has_calib, strategy="auto",
     )
 
 
@@ -81,6 +85,8 @@ def toggle(view: View, state: ColumnState, column: Column) -> ColumnState:
         return replace(state, dashboard=not state.dashboard)
     if column == Column.DEBUG:
         return replace(state, debug=not state.debug)
+    if column == Column.CONF:
+        return replace(state, conf=not state.conf)
     if not view.has_calib:
         return state  # calib + strategy disabled without a calib file
     if column == Column.CALIB:
@@ -102,6 +108,8 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--no-dashboard")
     if state.debug:
         args.append("--debug")
+    if state.conf:
+        args.append("--conf")
     if not state.calib:
         env["STOREPOSE_NO_CALIB"] = "1"  # suppress the script's auto --calib
     elif state.strategy != "auto":

@@ -69,12 +69,18 @@ def test_toggle_strategy_cycles_and_wraps():
     assert seen == ["auto", "skewed", "thirds", "peak", "auto"]
 
 
+def test_toggle_conf_flips_even_without_calib_file():
+    assert toggle_(default_state(V), Column.CONF).conf is True
+    assert toggle_(default_state(V_NO), Column.CONF, view=V_NO).conf is True
+
+
 def test_toggle_calib_and_strategy_noop_without_calib_file():
     s = default_state(V_NO)
     assert toggle_(s, Column.CALIB, view=V_NO) == s
     assert toggle_(s, Column.STRATEGY, view=V_NO) == s
-    # but dashboard/debug still work
+    # but dashboard/debug/conf still work
     assert toggle_(s, Column.DEBUG, view=V_NO).debug is True
+    assert toggle_(s, Column.CONF, view=V_NO).conf is True
 
 
 def toggle_(state, column, view=V):
@@ -110,3 +116,10 @@ def test_build_run_strategy_flag_when_calib_on():
     env, args = build_run(V, s)
     assert env == {}
     assert args == ["--busy-strategy", "peak"]
+
+
+def test_build_run_conf_flag():
+    s = ColumnState(dashboard=True, debug=False, conf=True, calib=True, strategy="auto")
+    env, args = build_run(V, s)
+    assert env == {}
+    assert args == ["--conf"]
