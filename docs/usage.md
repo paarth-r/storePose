@@ -188,6 +188,24 @@ Tuning knobs:
 | `--alt-zone PATH` | — | Non-Mashgin checkout zone; the dashboard shows avg serve time at Mashgin (green) vs non-Mashgin (red). |
 | `--define-alt-zone` | — | Draw the non-Mashgin checkout polygon and exit. |
 
+### Rejecting too-short visits (`--reject-short`)
+
+A flaky detection can produce a phantom "visit" that appears and checks out in ~2s
+when real visits cluster much higher. `--reject-short` flags any completed visit
+shorter than `max(--reject-floor, --reject-frac × running median)` for its **own**
+outcome (`served` / `served_other` / `abandoned`). The relative term kicks in only
+after `--reject-warmup` accepted samples for that outcome; before that just the
+floor applies. Rejected visits stay in the wait log (a `rejected` column) for
+audit but are **excluded** from the busy signal and dashboard, and they don't
+update the running median — so phantoms can't drag the bar down. Off by default.
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--reject-short` | — | Enable the too-short outlier filter. |
+| `--reject-floor` | `2.0` | Absolute minimum plausible visit duration (s). |
+| `--reject-frac` | `0.25` | Reject below this fraction of the per-outcome median. |
+| `--reject-warmup` | `10` | Accepted samples per outcome before the median term applies. |
+
 ---
 
 ## 4. Busy signal (Low / Medium / High)
