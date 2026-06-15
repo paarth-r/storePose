@@ -29,6 +29,14 @@ def main(argv: list[str] | None = None) -> int:
         saved = define_zones(config.source, alt_path=config.alt_zone, only="alt")
         print(f"Run with: --alt-zone {saved['alt']}" if "alt" in saved else "Nothing saved.")
         return 0
+    if config.calibrate:
+        from storepose.busy.calibrate import calibrate
+        try:
+            calibrate(config)
+        except (CameraOpenError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
     try:
         Runner(config).run()
     except CameraOpenError as exc:

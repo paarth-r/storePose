@@ -186,6 +186,54 @@ class BusyAggregator:
         value = self._metric_value(w, self._features(w))
         return classify(value, self.thresholds), value
 
+    def estimate_recent(
+        self, t: float, lookback: float
+    ) -> tuple[BusyLevel, float]:
+        """Live ``(level, value)`` from only the trailing ``lookback`` seconds.
+
+        Unlike :meth:`estimate` (which summarises the whole in-progress window and
+        so barely moves once the window fills), this reflects *recent* activity, so
+        the live badge tracks what is happening now. No hysteresis. For the
+        ``mean_wait`` metric there is no trailing-occupancy analogue, so this falls
+        back to :meth:`estimate`.
+        """
+        if lookback <= 0 or self.thresholds.metric == "mean_wait":
+            return self.estimate(t)
+        t0 = t - lookback
+        occ: list[float] = []
+        wts: list[float] = []
+        for w in range(self._win(max(0.0, t0)), self._win(t) + 1):
+            for ts, o, d in self._samples.get(w, []):
+                if t0 <= ts <= t:
+                    occ.append(o)
+                    wts.append(d)
+        value = _occ_stat(occ, wts, self.thresholds.metric)
+        return classify(value, self.thresholds), value
+
+    def subwindow_values(self) -> list[float]:
+        """The metric's value for every sub-window across the whole clip.
+
+        Buckets all collected samples by global sub-window index
+        (``t // sub_window_seconds``), independent of the 10-minute window
+        boundaries, and applies the configured occupancy metric per bucket. This
+        is the sample distribution used to *calibrate* the busy thresholds.
+        Requires ``sub_window_seconds`` to be set and an occupancy metric.
+        """
+        sub = self.sub_window_seconds
+        if not sub:
+            raise ValueError("subwindow_values requires sub_window_seconds")
+        metric = self.thresholds.metric
+        if metric == "mean_wait":
+            raise ValueError("subwindow_values needs an occupancy metric, not mean_wait")
+        buckets: dict[int, tuple[list[float], list[float]]] = {}
+        for samples in self._samples.values():
+            for t, o, d in samples:
+                k = int(t // sub)
+                occ, wts = buckets.setdefault(k, ([], []))
+                occ.append(o)
+                wts.append(d)
+        return [_occ_stat(occ, wts, metric) for _, (occ, wts) in sorted(buckets.items())]
+
     def _window_indices(self) -> list[int]:
         keys = set(self._samples) | set(self._throughput) | set(self._arrivals)
         return sorted(keys)

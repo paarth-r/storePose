@@ -43,6 +43,11 @@ _METRIC_ATTR = {
     "mean_wait": "mean_wait_seconds",
 }
 
+# Calibration band strategies (see busy.calibrate). Also the accepted
+# ``--busy-strategy`` CLI values.
+BUSY_STRATEGIES = ("skewed", "thirds", "peak")
+DEFAULT_BUSY_STRATEGY = "skewed"
+
 
 @dataclass(frozen=True)
 class BusyThresholds:

@@ -18,6 +18,8 @@ class TrackedPerson:
         scores: ``(17,)`` per-keypoint confidences, or ``None`` while coasting.
         coasting: True when the box is predicted (no detection this frame).
         color: Stable BGR color for this id.
+        score: Detector person-confidence of the last detection, or ``None``
+            while coasting.
     """
 
     id: int
@@ -26,3 +28,4 @@ class TrackedPerson:
     scores: np.ndarray | None
     coasting: bool
     color: tuple[int, int, int]
+    score: float | None = None

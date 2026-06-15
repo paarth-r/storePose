@@ -81,12 +81,14 @@ applies a **minimum-dwell gate** (`--wait-min-dwell`): a person must accumulate 
 seconds of in-zone time before they count as waiting. This is framerate-
 independent (unlike a raw frame count) and cleanly separates lingerers (line
 members) from transients (pass-throughs). A second, complementary filter rejects
-**directional transit**: each person carries an EMA of their velocity *vector*
-(`--transit-speed`, body-heights/sec) — a shopper walking *through* the zone keeps
-a large directional velocity and counts in no zone, while a queued person shuffling
-in place (whose back-and-forth cancels in the vector EMA) still counts. So we gate
-*sustained directional movement*, not stillness — people who legitimately move
-around while queued are unaffected.
+**directional transit**: each person's **net displacement over a trailing window**
+(`--transit-window`) is measured as an average speed (`--transit-speed`,
+body-heights/sec) — a shopper walking *through* the zone racks up large net
+displacement and counts in no zone, while a queued person shuffling in place
+(whose back-and-forth nets to ~0) still counts. Using net displacement rather than
+a per-frame velocity EMA avoids ramp lag, so clear walk-throughs are caught even
+at low frame rates. So we gate *sustained directional movement*, not stillness —
+people who legitimately move around while queued are unaffected.
 
 ## 3. Architecture of the aggregation layer
 

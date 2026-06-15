@@ -1,6 +1,6 @@
 import numpy as np
 
-from storepose.detector import suppress_contained_boxes
+from storepose.detector import _contained_keep_indices, suppress_contained_boxes
 
 
 def test_drops_box_mostly_contained_in_a_larger_one():
@@ -39,6 +39,19 @@ def test_empty_and_single_pass_through():
     assert len(suppress_contained_boxes(np.empty((0, 4), float), 0.8)) == 0
     one = np.array([[1, 2, 3, 4]], float)
     assert np.array_equal(suppress_contained_boxes(one, 0.8), one)
+
+
+def test_keep_indices_align_boxes_and_scores():
+    # the contained sub-box (index 1) is dropped; scores must filter in tandem
+    boxes = np.array([
+        [0, 0, 100, 200],     # full person -> kept
+        [10, 20, 90, 180],    # duplicate sub-box -> dropped
+        [300, 0, 360, 100],   # disjoint person -> kept
+    ], float)
+    scores = np.array([0.95, 0.40, 0.80], np.float32)
+    idx = _contained_keep_indices(boxes, 0.8)
+    assert idx == [0, 2]
+    assert np.allclose(scores[idx], [0.95, 0.80])  # dropped box's score gone
 
 
 def test_preserves_input_order_of_kept_boxes():

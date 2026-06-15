@@ -40,8 +40,10 @@ class Track:
         min_cutoff: float,
         beta: float,
         descriptor: np.ndarray | None = None,
+        det_score: float | None = None,
     ):
         self.id = track_id
+        self.det_score = det_score  # detector confidence of the last detection
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)  # last *detected* box (not coasted)
         self.hits = 1
@@ -84,7 +86,7 @@ class Track:
                 (1.0 - _DESC_ALPHA) * self.descriptor + _DESC_ALPHA * descriptor
             ).astype(np.float32)
 
-    def update(self, box, keypoints, scores, dt, descriptor=None) -> None:
+    def update(self, box, keypoints, scores, dt, descriptor=None, det_score=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
         self.last_box = np.asarray(box, float)
@@ -92,16 +94,18 @@ class Track:
         self.time_since_update = 0
         if self.hits >= self.min_hits:
             self.confirmed = True
+        self.det_score = det_score
         self._ingest_pose(keypoints, scores, dt)
         self._update_descriptor(descriptor)
 
-    def reactivate(self, box, keypoints, scores, dt, descriptor=None) -> None:
+    def reactivate(self, box, keypoints, scores, dt, descriptor=None, det_score=None) -> None:
         """Revive a lost/coasting track at a new detection, keeping id and color."""
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)
         self.time_since_update = 0
         self.hits += 1
         self.confirmed = True
+        self.det_score = det_score
         self._ingest_pose(keypoints, scores, dt)
         self._update_descriptor(descriptor)
 

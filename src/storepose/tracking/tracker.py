@@ -108,6 +108,7 @@ class MultiObjectTracker:
         boxes = result.boxes
         keypoints = result.keypoints
         scores = result.scores
+        det_scores = result.det_scores
         n = len(boxes)
 
         use_reid = self._reid and self._appearance is not None and frame is not None
@@ -137,14 +138,15 @@ class MultiObjectTracker:
         # 3. update matched tracks
         for d, tr in matches:
             self._tracks[tr].update(
-                boxes[d], keypoints[d], scores[d], dt, descriptor=det_descs[d]
+                boxes[d], keypoints[d], scores[d], dt, descriptor=det_descs[d],
+                det_score=float(det_scores[d]),
             )
 
         # 4. appearance re-attach leftover detections
         if use_reid and unmatched_dets:
             unmatched_dets = self._reattach(
                 unmatched_dets, unmatched_tracks, boxes, keypoints, scores,
-                det_descs, frame, dt,
+                det_descs, frame, dt, det_scores,
             )
 
         # 5. spawn tracks for still-unmatched detections
@@ -154,7 +156,7 @@ class MultiObjectTracker:
                     self._next_id, boxes[d], keypoints[d], scores[d], dt,
                     min_hits=self.min_hits, smooth=self.smooth,
                     min_cutoff=self.min_cutoff, beta=self.beta,
-                    descriptor=det_descs[d],
+                    descriptor=det_descs[d], det_score=float(det_scores[d]),
                 )
             )
             self._next_id += 1
@@ -190,13 +192,14 @@ class MultiObjectTracker:
                     scores=None if coasting else t.scores,
                     coasting=coasting,
                     color=t.color,
+                    score=None if coasting else t.det_score,
                 )
             )
         return people
 
     def _reattach(
         self, unmatched_dets, unmatched_tracks, boxes, keypoints, scores,
-        det_descs, frame, dt,
+        det_descs, frame, dt, det_scores,
     ) -> list[int]:
         """Revive ids for leftover detections via gated appearance match.
 
@@ -245,7 +248,8 @@ class MultiObjectTracker:
             used_d.add(d)
             used_c.add(ci)
             cand = cands[ci]
-            cand.track.reactivate(boxes[d], keypoints[d], scores[d], dt, descriptor=det_descs[d])
+            cand.track.reactivate(boxes[d], keypoints[d], scores[d], dt,
+                                   descriptor=det_descs[d], det_score=float(det_scores[d]))
             if cand.lost is not None:
                 self._lost.remove(cand.lost)
                 self._tracks.append(cand.track)

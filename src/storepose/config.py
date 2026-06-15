@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
+from .busy.types import BUSY_STRATEGIES
 from .busy.types import METRICS as BUSY_METRICS
 
 MODES = ("lightweight", "balanced", "performance")
@@ -74,6 +75,7 @@ class AppConfig:
     kpt_thr: float = 0.5
     device: str = "mps"
     show_fps: bool = True
+    show_conf: bool = False
     save: str | None = None
     track: bool = True
     hold_seconds: float = 1.5
@@ -95,11 +97,16 @@ class AppConfig:
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
     transit_speed: float = 0.4
+    transit_window: float = 1.0
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
     zone_foot_band: float = 0.3
     wait_min_dwell: float = 0.0
     wait_log: str | None = None
+    reject_short: bool = False
+    reject_floor: float = 2.0
+    reject_frac: float = 0.25
+    reject_warmup: int = 10
     busy: bool = False
     busy_log: str | None = None
     busy_window: float = 600.0
@@ -108,9 +115,14 @@ class AppConfig:
     busy_low_max: float = 1.0
     busy_medium_max: float = 3.0
     busy_hysteresis: float = 0.0
+    busy_live_window: float = 30.0
+    calib: str | None = None
+    busy_strategy: str | None = None  # None => use the calib file's auto default
     dashboard: bool = True
     dashboard_port: int = 8000
     debug: bool = False
+    calibrate: bool = False
+    verbose: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -141,6 +153,8 @@ class AppConfig:
             raise ValueError(f"wait_enter_frames must be >= 1, got {self.wait_enter_frames}")
         if self.transit_speed < 0:
             raise ValueError(f"transit_speed must be >= 0, got {self.transit_speed}")
+        if self.transit_window <= 0:
+            raise ValueError(f"transit_window must be > 0, got {self.transit_window}")
         if self.pos_enter_frames < 1:
             raise ValueError(f"pos_enter_frames must be >= 1, got {self.pos_enter_frames}")
         if self.wait_exit_seconds < 0:
@@ -151,6 +165,12 @@ class AppConfig:
             raise ValueError(f"zone_foot_band must be in (0, 1], got {self.zone_foot_band}")
         if self.wait_min_dwell < 0:
             raise ValueError(f"wait_min_dwell must be >= 0, got {self.wait_min_dwell}")
+        if self.reject_floor < 0:
+            raise ValueError(f"reject_floor must be >= 0, got {self.reject_floor}")
+        if not 0.0 <= self.reject_frac <= 1.0:
+            raise ValueError(f"reject_frac must be in [0, 1], got {self.reject_frac}")
+        if self.reject_warmup < 0:
+            raise ValueError(f"reject_warmup must be >= 0, got {self.reject_warmup}")
         from .busy.types import METRICS  # local import avoids package import cost
         if self.busy_window <= 0:
             raise ValueError(f"busy_window must be > 0, got {self.busy_window}")
@@ -162,6 +182,12 @@ class AppConfig:
             raise ValueError("busy_medium_max must be >= busy_low_max")
         if self.busy_hysteresis < 0:
             raise ValueError(f"busy_hysteresis must be >= 0, got {self.busy_hysteresis}")
+        if self.busy_live_window <= 0:
+            raise ValueError(f"busy_live_window must be > 0, got {self.busy_live_window}")
+        if self.busy_strategy is not None and self.busy_strategy not in BUSY_STRATEGIES:
+            raise ValueError(
+                f"busy_strategy must be one of {BUSY_STRATEGIES}, got {self.busy_strategy!r}"
+            )
         if not 1 <= self.dashboard_port <= 65535:
             raise ValueError(f"dashboard_port must be in [1, 65535], got {self.dashboard_port}")
 
@@ -220,6 +246,12 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="show_fps",
         action="store_false",
         help="Disable the FPS overlay.",
+    )
+    parser.add_argument(
+        "--conf",
+        dest="show_conf",
+        action="store_true",
+        help="Overlay each person's detector confidence next to their box/ID.",
     )
     parser.add_argument(
         "--save",
@@ -307,8 +339,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--transit-speed", type=float, default=0.4,
-        help="Reject walk-throughs: directional speed (body-heights/sec) above "
-             "which a person counts in no zone; 0 disables (default: 0.4).",
+        help="Reject walk-throughs: average speed (body-heights/sec, net "
+             "displacement over --transit-window) above which a person counts in "
+             "no zone; 0 disables (default: 0.4).",
+    )
+    parser.add_argument(
+        "--transit-window", type=float, default=1.0,
+        help="Trailing window (seconds) over which transit displacement is "
+             "measured (default: 1.0).",
     )
     parser.add_argument(
         "--wait-exit-seconds", type=float, default=2.0,
@@ -332,6 +370,25 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--wait-log", default=None, metavar="PATH",
         help="Append completed waits (id, entered, exited, seconds) as CSV.",
+    )
+    parser.add_argument(
+        "--reject-short", action="store_true",
+        help="Flag implausibly short visits (likely false detections) as rejected: "
+             "kept in the wait log but excluded from the busy signal.",
+    )
+    parser.add_argument(
+        "--reject-floor", type=float, default=2.0,
+        help="Absolute minimum plausible visit duration in seconds (default: 2.0).",
+    )
+    parser.add_argument(
+        "--reject-frac", type=float, default=0.25,
+        help="Reject a visit shorter than this fraction of the running median for "
+             "its outcome (default: 0.25).",
+    )
+    parser.add_argument(
+        "--reject-warmup", type=int, default=10,
+        help="Accepted samples per outcome before the relative (median) term "
+             "applies; until then only --reject-floor (default: 10).",
     )
     parser.add_argument(
         "--busy", action="store_true",
@@ -368,6 +425,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Cross-window deadband to suppress busy-label flapping (default: 0).",
     )
     parser.add_argument(
+        "--busy-live-window", type=float, default=30.0,
+        help="Trailing seconds the live badge summarises, so it tracks recent "
+             "activity rather than the whole 10-min window (default: 30).",
+    )
+    parser.add_argument(
+        "--calib", default=None, metavar="PATH",
+        help="Load per-view busy bands from a calib JSON (see --calibrate); "
+             "overrides the manual --busy-*-max thresholds.",
+    )
+    parser.add_argument(
+        "--busy-strategy", choices=BUSY_STRATEGIES, default=None,
+        help="Override which calibrated band set to use from --calib; default is "
+             "the auto-selected strategy stored in the calib file.",
+    )
+    parser.add_argument(
         "--no-dashboard", dest="dashboard", action="store_false",
         help="Disable the live web dashboard.",
     )
@@ -379,6 +451,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true",
         help="Frame-by-frame step mode: scrub a rolling buffer and read each "
              "person's classification in the dashboard Debug tab.",
+    )
+    parser.add_argument(
+        "--calibrate", action="store_true",
+        help="Infer busy bands for --source from its occupancy distribution and "
+             "write calib/<stem>.json (needs --zone). Headless unless -v.",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="During --calibrate, show an annotated preview window (otherwise "
+             "headless).",
     )
     return parser
 
@@ -394,6 +476,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         kpt_thr=args.kpt_thr,
         device=args.device,
         show_fps=args.show_fps,
+        show_conf=args.show_conf,
         save=args.save,
         track=args.track,
         hold_seconds=args.hold_seconds,
@@ -415,11 +498,16 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
         transit_speed=args.transit_speed,
+        transit_window=args.transit_window,
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,
         zone_foot_band=args.zone_foot_band,
         wait_min_dwell=args.wait_min_dwell,
         wait_log=args.wait_log,
+        reject_short=args.reject_short,
+        reject_floor=args.reject_floor,
+        reject_frac=args.reject_frac,
+        reject_warmup=args.reject_warmup,
         busy=args.busy or args.busy_log is not None,
         busy_log=args.busy_log,
         busy_window=args.busy_window,
@@ -428,7 +516,12 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         busy_low_max=args.busy_low_max,
         busy_medium_max=args.busy_medium_max,
         busy_hysteresis=args.busy_hysteresis,
+        busy_live_window=args.busy_live_window,
+        calib=args.calib,
+        busy_strategy=args.busy_strategy,
         dashboard=args.dashboard,
         dashboard_port=args.dashboard_port,
         debug=args.debug,
+        calibrate=args.calibrate,
+        verbose=args.verbose,
     )

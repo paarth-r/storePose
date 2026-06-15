@@ -49,6 +49,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 |-------|-----------|--------------|
 | Boxes + skeletons | always | Per-person box with a stable `ID n` and a colored COCO skeleton. Skeleton is hidden while a box is *coasting* (predicted through an occlusion). |
 | FPS | always (hide with `--no-fps`) | Rolling average framerate, top-left. |
+| Detector confidence | `--conf` | Each person's YOLOX detection score (e.g. `ID 3  0.91`) next to their box/ID. Hidden while coasting (no fresh detection). |
 | Queue | `--zone PATH` | The zone polygon (orange); a rising fill + `%` for candidates and a full fill + `WAIT n.n s` for people in line, each in that person's **persistent id color**; an `in line: N` header count. |
 | Busy badge | `--busy` (needs `--zone`) | A `LOW / MEDIUM / HIGH` badge, the current metric value, and a countdown to the end of the active window. |
 
@@ -62,6 +63,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--det-overlap` | `0.8` | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing / ankle test. |
 | `--no-fps` | — | Hide the FPS overlay. |
+| `--conf` | — | Overlay each person's detector confidence next to their box/ID. |
 | `--no-track` | — | Raw per-frame boxes, no stable IDs (disables queue/busy). |
 | `--no-reid` | — | Disable appearance re-id; a returning person gets a new id. |
 | `--reid-seconds` | `5.0` | How long a lost track stays re-attachable. |
@@ -178,12 +180,31 @@ Tuning knobs:
 | `--wait-enter-frames` | `5` | Consecutive in-zone frames before WAITING. |
 | `--wait-exit-seconds` | `2.0` | Out-of-zone time before a wait ends. |
 | `--wait-min-dwell` | `0.0` | Min in-zone dwell (s) before counting — the bystander filter. |
-| `--transit-speed` | `0.4` | Reject walk-throughs: directional speed (body-heights/sec) above which a person counts in no zone; `0` disables. |
+| `--transit-speed` | `0.4` | Reject walk-throughs: average speed (body-heights/sec, net displacement over `--transit-window`) above which a person counts in no zone; `0` disables. |
+| `--transit-window` | `1.0` | Trailing window (seconds) over which transit displacement is measured. |
 | `--wait-log PATH` | — | Append completed waits as CSV. |
 | `--pos-zone PATH` | — | Mashgin POS zone; splits line time into waiting vs serving (adds `serving_seconds,outcome` CSV columns). |
 | `--define-pos-zone` | — | Draw the POS polygon and exit. |
 | `--alt-zone PATH` | — | Non-Mashgin checkout zone; the dashboard shows avg serve time at Mashgin (green) vs non-Mashgin (red). |
 | `--define-alt-zone` | — | Draw the non-Mashgin checkout polygon and exit. |
+
+### Rejecting too-short visits (`--reject-short`)
+
+A flaky detection can produce a phantom "visit" that appears and checks out in ~2s
+when real visits cluster much higher. `--reject-short` flags any completed visit
+shorter than `max(--reject-floor, --reject-frac × running median)` for its **own**
+outcome (`served` / `served_other` / `abandoned`). The relative term kicks in only
+after `--reject-warmup` accepted samples for that outcome; before that just the
+floor applies. Rejected visits stay in the wait log (a `rejected` column) for
+audit but are **excluded** from the busy signal and dashboard, and they don't
+update the running median — so phantoms can't drag the bar down. Off by default.
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--reject-short` | — | Enable the too-short outlier filter. |
+| `--reject-floor` | `2.0` | Absolute minimum plausible visit duration (s). |
+| `--reject-frac` | `0.25` | Reject below this fraction of the per-outcome median. |
+| `--reject-warmup` | `10` | Accepted samples per outcome before the median term applies. |
 
 ---
 
@@ -217,9 +238,8 @@ value <= --busy-medium-max  -> MEDIUM    (default 3.0)
 value >  --busy-medium-max  -> HIGH
 ```
 
-> ⚠️ The default thresholds are **placeholders** — calibrate them on real
-> footage against a labeled set (the `label` → `eval` loop above). See
-> [`problem-definition.md`](problem-definition.md).
+> ⚠️ The manual thresholds above are **placeholders**. Prefer **calibration**
+> (below), which infers per-view bands from the clip itself.
 
 Stabilizers:
 
@@ -231,8 +251,52 @@ Stabilizers:
 | `--busy-metric` | `occupancy_p90` | `occupancy_{p90,mean,median,max}` or `mean_wait`. |
 | `--busy-subwindow` | `0` | Two-level smoothing: per-sub-window stat, median across window (e.g. 60). 0 = off. |
 | `--busy-hysteresis` | `0` | Cross-window deadband so the label doesn't flap near a cut point. |
+| `--busy-live-window` | `30` | Trailing seconds the live badge summarises, so it tracks recent activity (not the whole 10-min window). |
 | `--busy-low-max` | `1.0` | Upper bound of the LOW band (metric units). |
 | `--busy-medium-max` | `3.0` | Upper bound of the MEDIUM band (metric units). |
+
+### Calibration (per-view bands, inferred from a clip)
+
+Instead of guessing thresholds, infer them from a representative clip. Calibration
+is its own command — **headless by default**, `-v` shows a preview window:
+
+```bash
+# one full-clip pass; writes calib/<stem>.json
+uv run python main.py --calibrate --source videos/clip.mp4 --zone zones/clip.json \
+    --pos-zone zones/clip_pos.json
+```
+
+It collects occupancy per sub-window across the whole clip and derives three
+candidate band sets, then **auto-selects a default** from the clip's shape:
+
+| strategy | cuts by | meaning |
+|----------|---------|---------|
+| `skewed` | time percentiles `p60`/`p85` | busy is rare (top ~15% of the time) |
+| `thirds` | time percentiles `p33`/`p66` | busiest third of the time |
+| `peak`   | `0.30`/`0.70` × peak occupancy | line is >70% as full as it ever got |
+
+Auto-default uses `fill_ratio = median/peak`: a line that **empties out** (low
+ratio) → `skewed`; one that **sits full** (ratio ≥ 0.5, no quiet baseline) →
+`peak`. The pick is stored in the calib file, so runs need no flag.
+
+```bash
+# run using the calibrated bands (auto-default strategy, no flag needed)
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --busy \
+    --calib calib/clip.json
+# override the strategy to compare by eye:
+uv run python main.py ... --busy --calib calib/clip.json --busy-strategy peak
+```
+
+`--calib` overrides the manual `--busy-*-max` flags. `view-setup.sh`-generated
+run scripts pick up `calib/<stem>.json` automatically once it exists. Calib files
+are per-view and gitignored (like `zones/`).
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--calibrate` | — | Infer bands for `--source` and write `calib/<stem>.json` (needs `--zone`). |
+| `-v` / `--verbose` | — | During `--calibrate`, show an annotated preview window (else headless). |
+| `--calib PATH` | — | Load calibrated bands at run time (overrides `--busy-*-max`). |
+| `--busy-strategy` | auto | Override the calib file's auto-selected strategy (`skewed`/`thirds`/`peak`). |
 
 ---
 

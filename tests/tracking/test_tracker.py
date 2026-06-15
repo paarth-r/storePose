@@ -9,7 +9,8 @@ def make_result(boxes, kpts=None):
     n = len(boxes)
     if kpts is None:
         kpts = np.zeros((n, 17, 2), float)
-    return FrameResult(boxes=boxes, keypoints=kpts, scores=np.ones((n, 17), float))
+    return FrameResult(boxes=boxes, keypoints=kpts, scores=np.ones((n, 17), float),
+                       det_scores=np.full(n, 0.9, float))
 
 
 def test_track_confirms_after_min_hits():
@@ -19,6 +20,15 @@ def test_track_confirms_after_min_hits():
     assert tr.update(make_result([box]), 1 / 30) == []
     out = tr.update(make_result([box]), 1 / 30)
     assert len(out) == 1 and out[0].id == 0 and out[0].coasting is False
+
+
+def test_detector_score_propagates_and_clears_on_coast():
+    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False)
+    box = [10, 10, 50, 90]
+    out = tr.update(make_result([box]), 1 / 30)
+    assert abs(out[0].score - 0.9) < 1e-6     # detector score reaches the person
+    coast = tr.update(make_result([]), 1 / 30)
+    assert coast[0].coasting is True and coast[0].score is None  # cleared on coast
 
 
 def test_stable_id_across_frames():

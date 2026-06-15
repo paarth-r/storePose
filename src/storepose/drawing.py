@@ -22,11 +22,14 @@ TEXT_COLOR = (255, 255, 255)
 FPS_COLOR = (0, 215, 255)
 
 
-def _draw_boxes(frame: np.ndarray, boxes: np.ndarray) -> None:
+def _draw_boxes(frame: np.ndarray, boxes: np.ndarray,
+                scores: np.ndarray | None = None, show_conf: bool = False) -> None:
     for i, box in enumerate(boxes):
         x1, y1, x2, y2 = (int(round(v)) for v in box[:4])
         cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_COLOR, 2)
         label = f"person {i + 1}"
+        if show_conf and scores is not None and i < len(scores):
+            label += f"  {float(scores[i]):.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw + 4, y1), BOX_COLOR, -1)
         cv2.putText(
@@ -63,7 +66,7 @@ def annotate(
             radius=3,
             line_width=2,
         )
-        _draw_boxes(canvas, result.boxes)
+        _draw_boxes(canvas, result.boxes, result.det_scores, config.show_conf)
 
     header = f"people: {result.count}"
     if config.show_fps and fps is not None:
@@ -95,6 +98,8 @@ def annotate_tracked(
         x1, y1, x2, y2 = (int(round(v)) for v in p.box[:4])
         cv2.rectangle(canvas, (x1, y1), (x2, y2), p.color, 2)
         label = f"ID {p.id}"
+        if config.show_conf and p.score is not None:
+            label += f"  {p.score:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(canvas, (x1, y1 - th - 6), (x1 + tw + 4, y1), p.color, -1)
         cv2.putText(canvas, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX,

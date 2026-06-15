@@ -41,6 +41,7 @@ def read_waits(path: str | Path) -> list[CompletedWait]:
                     wait_seconds=float(row["wait_seconds"]),
                     serving_seconds=float(row.get("serving_seconds") or 0.0),
                     outcome=(row.get("outcome") or "served"),
+                    rejected=bool(int(row.get("rejected") or 0)),
                 )
             )
     return waits

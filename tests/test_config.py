@@ -24,6 +24,26 @@ def test_parses_flags():
     assert cfg.show_fps is False
 
 
+def test_conf_flag():
+    assert from_args([]).show_conf is False
+    assert from_args(["--conf"]).show_conf is True
+
+
+def test_reject_short_flags():
+    d = from_args([])
+    assert (d.reject_short, d.reject_floor, d.reject_frac, d.reject_warmup) == (
+        False, 2.0, 0.25, 10)
+    c = from_args(["--reject-short", "--reject-floor", "3", "--reject-frac", "0.5",
+                   "--reject-warmup", "20"])
+    assert (c.reject_short, c.reject_floor, c.reject_frac, c.reject_warmup) == (
+        True, 3.0, 0.5, 20)
+
+
+def test_transit_window_flag():
+    assert from_args([]).transit_window == 1.0
+    assert from_args(["--transit-window", "2.5"]).transit_window == 2.5
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -35,6 +55,10 @@ def test_parses_flags():
         {"busy_metric": "vibes"},
         {"busy_medium_max": 1.0, "busy_low_max": 2.0},
         {"busy_hysteresis": -0.5},
+        {"transit_window": 0},
+        {"reject_floor": -1.0},
+        {"reject_frac": 1.5},
+        {"reject_warmup": -1},
     ],
 )
 def test_rejects_invalid(kwargs):

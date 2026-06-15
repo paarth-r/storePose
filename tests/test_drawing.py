@@ -17,6 +17,7 @@ def test_annotate_empty_returns_same_shape_and_does_not_mutate_input():
         boxes=np.empty((0, 4), np.float32),
         keypoints=np.empty((0, NUM_KEYPOINTS, 2), np.float32),
         scores=np.empty((0, NUM_KEYPOINTS), np.float32),
+        det_scores=np.empty((0,), np.float32),
     )
     out = annotate(frame, result, AppConfig(), fps=12.0)
     assert out.shape == frame.shape
@@ -29,7 +30,8 @@ def test_annotate_draws_box_pixels_for_a_person():
     boxes = np.array([[20, 20, 100, 100]], np.float32)
     kpts = np.full((1, NUM_KEYPOINTS, 2), 50.0, np.float32)
     scores = np.ones((1, NUM_KEYPOINTS), np.float32)
-    result = FrameResult(boxes=boxes, keypoints=kpts, scores=scores)
+    result = FrameResult(boxes=boxes, keypoints=kpts, scores=scores,
+                         det_scores=np.array([0.9], np.float32))
     out = annotate(frame, result, AppConfig(), fps=30.0)
     # green box edge should appear somewhere on the frame
     assert (out[:, :, 1] > 0).sum() > 0
@@ -47,6 +49,30 @@ def test_annotate_tracked_draws_box_and_skeleton():
     assert out.shape == frame.shape
     assert (out[:, :, 1] > 0).sum() > 0
     assert np.array_equal(frame, _blank())  # input untouched
+
+
+def test_conf_overlay_changes_tracked_label():
+    frame = _blank()
+    p = TrackedPerson(
+        id=2, box=np.array([20, 20, 100, 100], float),
+        keypoints=None, scores=None, coasting=False, color=(0, 255, 0),
+        score=0.91,
+    )
+    without = annotate_tracked(frame, [p], AppConfig(show_conf=False), fps=None)
+    with_conf = annotate_tracked(frame, [p], AppConfig(show_conf=True), fps=None)
+    assert not np.array_equal(without, with_conf)  # confidence text drawn
+
+
+def test_conf_overlay_skipped_when_score_none():
+    # coasting person has score None -> --conf draws nothing extra, no crash
+    frame = _blank()
+    p = TrackedPerson(
+        id=1, box=np.array([20, 20, 100, 100], float),
+        keypoints=None, scores=None, coasting=True, color=(0, 255, 0), score=None,
+    )
+    a = annotate_tracked(frame, [p], AppConfig(show_conf=False), fps=None)
+    b = annotate_tracked(frame, [p], AppConfig(show_conf=True), fps=None)
+    assert np.array_equal(a, b)
 
 
 def test_annotate_tracked_coasting_has_no_pose_and_no_crash():
