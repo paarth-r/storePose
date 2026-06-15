@@ -31,6 +31,15 @@ badge actually tracks recent activity — so the fix belongs in this work.
   - `peak` — fraction of peak occupancy: `low_max = 0.30 * peak`,
     `medium_max = 0.70 * peak`
   (percentile/fraction knobs are module constants, retunable later)
+- **Auto-selected default (no flag/input):** the calibrator picks the default
+  strategy from the clip's *shape* and records it as `default_strategy` in the
+  calib file. Signal: `fill_ratio = median/peak` of per-sub-window occupancy.
+  `>= SITS_FULL_RATIO` (0.5) means the line rarely empties (congested clip,
+  percentile cuts mis-anchor) -> `peak`; below it the line empties out
+  (real baseline) -> `skewed`. The three only diverge when there is no quiet
+  baseline, so this is the only case the rule must resolve. `--busy-strategy`
+  overrides. (Rejected: always-skewed — repeats the congested-clip failure;
+  median/consensus of the three — biased, two of three are percentile-based.)
 - **Workflow:** a **separate `--calibrate` command**, **headless by default**,
   `-v`/`--verbose` shows the annotated window. Calibrate once → one calib file
   holds all three strategies → flip between them at run time.
@@ -87,11 +96,13 @@ purpose. Existing `_metric_value`/`windows()` behavior is untouched.
 
 **Loading.** New CLI:
 - `--calib PATH` — load a calib file.
-- `--busy-strategy {skewed,thirds,peak}` — default `skewed`.
+- `--busy-strategy {skewed,thirds,peak}` — default unset (None). When unset, the
+  calib file's `default_strategy` is used; passing the flag overrides it.
 
-When `--calib` is set, the chosen strategy's `low_max`/`medium_max` (plus the
+When `--calib` is set, the resolved strategy's `low_max`/`medium_max` (plus the
 calib file's `metric` and `subwindow`) populate `BusyThresholds`, **overriding**
-the manual `--busy-low-max`/`--busy-medium-max`/`--busy-metric` flags.
+the manual `--busy-low-max`/`--busy-medium-max`/`--busy-metric` flags. Resolution
+order: explicit `--busy-strategy` -> calib `default_strategy` -> `skewed`.
 Without `--calib`, behavior is exactly as today (manual flags / defaults).
 `view-setup.sh` adds `--calib calib/<stem>.json` to the generated run script when
 that file exists; the strategy stays a default that you flip with the optional
@@ -117,6 +128,10 @@ trailing-window.
   "subwindow_seconds": 30.0,
   "samples": 142,
   "generated": "2026-06-15T12:00:00",
+  "occupancy_peak": 4.0,
+  "occupancy_median": 1.0,
+  "fill_ratio": 0.25,
+  "default_strategy": "skewed",
   "strategies": {
     "skewed": {"low_max": 1.0, "medium_max": 3.0},
     "thirds": {"low_max": 1.0, "medium_max": 2.0},
@@ -126,7 +141,10 @@ trailing-window.
 ```
 
 `label` is an optional free-text field (e.g. store/location note); nothing is
-derived from the filename.
+derived from the filename. `default_strategy` is the auto-selected default (see
+Decisions); `occupancy_peak`/`occupancy_median`/`fill_ratio` record the shape the
+selection was based on. Calib files are generated per camera and gitignored
+(like `zones/`), since they are tied to the gitignored `videos/`.
 
 ## Data flow
 
