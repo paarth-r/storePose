@@ -77,6 +77,7 @@ def build_analyzer(config: AppConfig):
         reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
         pos_enter_frames=config.pos_enter_frames,
         transit_speed=config.transit_speed,
+        transit_window=config.transit_window,
     )
     return zone, analyzer, pos_zone, alt_zone
 

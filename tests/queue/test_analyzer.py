@@ -317,6 +317,26 @@ def test_transit_speed_zero_disables_filter():
     assert r.statuses[0].waiting is True
 
 
+def test_walkthrough_low_fps_big_steps():
+    # ~6 fps with big per-frame jumps — the case the velocity EMA missed.
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=1.0, transit_speed=0.4)
+    r = None
+    for x in (20, 80, 140):               # ~60 px/frame at dt=1/6 -> clearly transit
+        r = an.update([person(1, _box(x))], 1 / 6)
+    assert r.count == 0
+
+
+def test_reid_return_does_not_spike_transit():
+    # the displacement across a re-id gap must not be read as a transit spike
+    an = QueueAnalyzer(ZONE, enter_frames=2, exit_seconds=3.0, transit_speed=0.4,
+                       reid_grace_seconds=5.0)
+    for _ in range(4):                    # stationary, established
+        an.update([person(1, _box(100))], 0.5)
+    an.update([], 0.5)                    # vanished (re-id gap)
+    r = an.update([person(1, _box(160))], 0.5)  # returns displaced, then holds
+    assert r.statuses[0].debug["transit"] is False
+
+
 def test_single_zone_completed_wait_is_served_not_abandoned():
     # No POS zone -> no abandonment concept -> completed waits are "served",
     # so single-zone --busy keeps receiving them.

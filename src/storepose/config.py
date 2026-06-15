@@ -97,6 +97,7 @@ class AppConfig:
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
     transit_speed: float = 0.4
+    transit_window: float = 1.0
     wait_exit_seconds: float = 2.0
     zone_coverage: float = 0.5
     zone_foot_band: float = 0.3
@@ -148,6 +149,8 @@ class AppConfig:
             raise ValueError(f"wait_enter_frames must be >= 1, got {self.wait_enter_frames}")
         if self.transit_speed < 0:
             raise ValueError(f"transit_speed must be >= 0, got {self.transit_speed}")
+        if self.transit_window <= 0:
+            raise ValueError(f"transit_window must be > 0, got {self.transit_window}")
         if self.pos_enter_frames < 1:
             raise ValueError(f"pos_enter_frames must be >= 1, got {self.pos_enter_frames}")
         if self.wait_exit_seconds < 0:
@@ -326,8 +329,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--transit-speed", type=float, default=0.4,
-        help="Reject walk-throughs: directional speed (body-heights/sec) above "
-             "which a person counts in no zone; 0 disables (default: 0.4).",
+        help="Reject walk-throughs: average speed (body-heights/sec, net "
+             "displacement over --transit-window) above which a person counts in "
+             "no zone; 0 disables (default: 0.4).",
+    )
+    parser.add_argument(
+        "--transit-window", type=float, default=1.0,
+        help="Trailing window (seconds) over which transit displacement is "
+             "measured (default: 1.0).",
     )
     parser.add_argument(
         "--wait-exit-seconds", type=float, default=2.0,
@@ -460,6 +469,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
         transit_speed=args.transit_speed,
+        transit_window=args.transit_window,
         wait_exit_seconds=args.wait_exit_seconds,
         zone_coverage=args.zone_coverage,
         zone_foot_band=args.zone_foot_band,
