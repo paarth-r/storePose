@@ -37,6 +37,50 @@ _RIGHT_KEYS = {63235, 65363, 2555904}
 _LEFT_KEYS = {63234, 65361, 2424832}
 
 
+def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
+    """Construct the multi-object tracker from config (shared by run + calibrate)."""
+    max_age = max(1, round(config.hold_seconds * base_fps))
+    appearance = (
+        HsvHistogramAppearance(kpt_thr=config.kpt_thr) if config.reid else None
+    )
+    reid_max_age = max(1, round(config.reid_seconds * base_fps))
+    return MultiObjectTracker(
+        max_age=max_age, min_hits=config.min_hits,
+        iou_thr=config.iou_thr, max_overlap=config.max_overlap,
+        smooth=config.smooth,
+        min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
+        appearance=appearance, reid=config.reid,
+        reid_max_age=reid_max_age, reid_thr=config.reid_thr,
+    )
+
+
+def build_analyzer(config: AppConfig):
+    """Load zones and construct the queue analyzer (shared by run + calibrate).
+
+    Assumes ``config.zone`` is set. Returns ``(zone, analyzer, pos_zone, alt_zone)``.
+    """
+    zone = Zone.load(config.zone)
+    pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
+    alt_zone = Zone.load(config.alt_zone) if config.alt_zone else None
+    analyzer = QueueAnalyzer(
+        zone,
+        pos_zone=pos_zone,
+        alt_zone=alt_zone,
+        enter_frames=config.wait_enter_frames,
+        exit_seconds=config.wait_exit_seconds,
+        kpt_thr=config.kpt_thr,
+        coverage_thr=config.zone_coverage,
+        foot_band=config.zone_foot_band,
+        min_dwell_seconds=config.wait_min_dwell,
+        # carry a vanished person's gap into their held state for the re-id
+        # window; a re-identified id resumes it
+        reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
+        pos_enter_frames=config.pos_enter_frames,
+        transit_speed=config.transit_speed,
+    )
+    return zone, analyzer, pos_zone, alt_zone
+
+
 def _person_state(s) -> str:
     """One-word classification of a PersonStatus for the debug table."""
     if s.serving:
@@ -150,59 +194,51 @@ class Runner:
                 tracker = None
                 if config.track:
                     base_fps = source.fps or _DEFAULT_FPS
-                    max_age = max(1, round(config.hold_seconds * base_fps))
-                    appearance = (
-                        HsvHistogramAppearance(kpt_thr=config.kpt_thr)
-                        if config.reid else None
-                    )
-                    reid_max_age = max(1, round(config.reid_seconds * base_fps))
-                    tracker = MultiObjectTracker(
-                        max_age=max_age, min_hits=config.min_hits,
-                        iou_thr=config.iou_thr, max_overlap=config.max_overlap,
-                        smooth=config.smooth,
-                        min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
-                        appearance=appearance, reid=config.reid,
-                        reid_max_age=reid_max_age, reid_thr=config.reid_thr,
-                    )
+                    tracker = build_tracker(config, base_fps)
 
                 zone, analyzer, pos_zone, alt_zone = None, None, None, None
                 if config.zone:
                     if tracker is None:
                         print("Note: --zone needs tracking; ignoring (you passed --no-track).")
                     else:
-                        zone = Zone.load(config.zone)
-                        pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
-                        alt_zone = Zone.load(config.alt_zone) if config.alt_zone else None
-                        analyzer = QueueAnalyzer(
-                            zone,
-                            pos_zone=pos_zone,
-                            alt_zone=alt_zone,
-                            enter_frames=config.wait_enter_frames,
-                            exit_seconds=config.wait_exit_seconds,
-                            kpt_thr=config.kpt_thr,
-                            coverage_thr=config.zone_coverage,
-                            foot_band=config.zone_foot_band,
-                            min_dwell_seconds=config.wait_min_dwell,
-                            # carry a vanished person's gap into their held state
-                            # for the re-id window; a re-identified id resumes it
-                            reid_grace_seconds=config.reid_seconds if config.reid else 0.0,
-                            pos_enter_frames=config.pos_enter_frames,
-                            transit_speed=config.transit_speed,
-                        )
+                        zone, analyzer, pos_zone, alt_zone = build_analyzer(config)
                 elif config.pos_zone or config.alt_zone:
                     print("Note: --pos-zone/--alt-zone need --zone (the line zone); ignoring.")
 
                 busy = None
                 if config.busy and analyzer is not None:
-                    busy = BusyAggregator(
-                        BusyThresholds(
+                    if config.calib:
+                        from .busy.calibrate import (
+                            DEFAULT_BUSY_STRATEGY,
+                            load_calib,
+                            thresholds_from_calib,
+                        )
+                        calib = load_calib(config.calib)
+                        # explicit flag wins; else the calib's auto-selected default
+                        strategy = (config.busy_strategy
+                                    or calib.get("default_strategy")
+                                    or DEFAULT_BUSY_STRATEGY)
+                        chosen = " (auto)" if config.busy_strategy is None else " (--busy-strategy)"
+                        thresholds = thresholds_from_calib(
+                            calib, strategy, hysteresis=config.busy_hysteresis,
+                        )
+                        sub = calib.get("subwindow_seconds") or config.busy_subwindow or None
+                        print(f"Busy bands from {config.calib} [{strategy}{chosen}]: "
+                              f"not-busy <= {thresholds.low_max:g}, medium <= "
+                              f"{thresholds.medium_max:g} ({thresholds.metric}); "
+                              f"manual --busy-*-max ignored.")
+                    else:
+                        thresholds = BusyThresholds(
                             metric=config.busy_metric,
                             low_max=config.busy_low_max,
                             medium_max=config.busy_medium_max,
                             hysteresis=config.busy_hysteresis,
-                        ),
+                        )
+                        sub = config.busy_subwindow or None
+                    busy = BusyAggregator(
+                        thresholds,
                         window_seconds=config.busy_window,
-                        sub_window_seconds=config.busy_subwindow or None,
+                        sub_window_seconds=sub,
                     )
                 elif config.busy:
                     print("Note: --busy needs an active --zone; ignoring.")
@@ -278,7 +314,8 @@ class Runner:
                                     if c.outcome in ("served", "served_other"):
                                         busy.add_wait(c)
                                 if clock >= next_busy:  # refresh the label every 10 s
-                                    level, busy_value = busy.estimate(clock)
+                                    level, busy_value = busy.estimate_recent(
+                                        clock, config.busy_live_window)
                                     busy_label = level.label
                                     next_busy = clock + _BUSY_REFRESH_SECONDS
                                     if dash_state is not None:

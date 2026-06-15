@@ -23,3 +23,6 @@ zones/
 run.sh
 viewscripts/
 runs/
+
+# Per-camera generated busy calibration (tied to gitignored videos/, like zones/)
+calib/

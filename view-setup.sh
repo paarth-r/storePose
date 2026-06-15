@@ -33,6 +33,7 @@ STEM="$(basename "${VIDEO%.*}")"
 ZONE="zones/${STEM}.json"
 POS="zones/${STEM}_pos.json"
 ALT="zones/${STEM}_alt.json"
+CAL="calib/${STEM}.json"
 
 echo "==> Zone setup for: $STEM"
 echo "    keys:  1 = line   2 = Mashgin POS   3 = non-Mashgin   n = new contour   u = undo   c = clear   s = save   q = quit"
@@ -49,10 +50,15 @@ SCRIPT="viewscripts/${STEM}.sh"
   echo 'set -euo pipefail'
   echo 'cd "$(dirname "$0")/.."'
   echo ''
+  printf 'CALIB=%q\n' "$CAL"
+  echo 'EXTRA=()'
+  echo '# pick up busy calibration if it exists (create it with: main.py --calibrate ...)'
+  echo '[[ -f "$CALIB" ]] && EXTRA+=(--calib "$CALIB")'
+  echo ''
   printf 'uv run python main.py --source %q --zone %q' "$VIDEO" "$ZONE"
   [[ -f "$POS" ]] && printf ' --pos-zone %q' "$POS"
   [[ -f "$ALT" ]] && printf ' --alt-zone %q' "$ALT"
-  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "$@"\n' \
+  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "${EXTRA[@]}" "$@"\n' \
          "runs/${STEM}_waits.csv" "runs/${STEM}_busy.csv" "$PORT"
 } > "$SCRIPT"
 chmod +x "$SCRIPT"

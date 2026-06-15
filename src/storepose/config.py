@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
+from .busy.types import BUSY_STRATEGIES
 from .busy.types import METRICS as BUSY_METRICS
 
 MODES = ("lightweight", "balanced", "performance")
@@ -108,9 +109,14 @@ class AppConfig:
     busy_low_max: float = 1.0
     busy_medium_max: float = 3.0
     busy_hysteresis: float = 0.0
+    busy_live_window: float = 30.0
+    calib: str | None = None
+    busy_strategy: str | None = None  # None => use the calib file's auto default
     dashboard: bool = True
     dashboard_port: int = 8000
     debug: bool = False
+    calibrate: bool = False
+    verbose: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -162,6 +168,12 @@ class AppConfig:
             raise ValueError("busy_medium_max must be >= busy_low_max")
         if self.busy_hysteresis < 0:
             raise ValueError(f"busy_hysteresis must be >= 0, got {self.busy_hysteresis}")
+        if self.busy_live_window <= 0:
+            raise ValueError(f"busy_live_window must be > 0, got {self.busy_live_window}")
+        if self.busy_strategy is not None and self.busy_strategy not in BUSY_STRATEGIES:
+            raise ValueError(
+                f"busy_strategy must be one of {BUSY_STRATEGIES}, got {self.busy_strategy!r}"
+            )
         if not 1 <= self.dashboard_port <= 65535:
             raise ValueError(f"dashboard_port must be in [1, 65535], got {self.dashboard_port}")
 
@@ -368,6 +380,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Cross-window deadband to suppress busy-label flapping (default: 0).",
     )
     parser.add_argument(
+        "--busy-live-window", type=float, default=30.0,
+        help="Trailing seconds the live badge summarises, so it tracks recent "
+             "activity rather than the whole 10-min window (default: 30).",
+    )
+    parser.add_argument(
+        "--calib", default=None, metavar="PATH",
+        help="Load per-view busy bands from a calib JSON (see --calibrate); "
+             "overrides the manual --busy-*-max thresholds.",
+    )
+    parser.add_argument(
+        "--busy-strategy", choices=BUSY_STRATEGIES, default=None,
+        help="Override which calibrated band set to use from --calib; default is "
+             "the auto-selected strategy stored in the calib file.",
+    )
+    parser.add_argument(
         "--no-dashboard", dest="dashboard", action="store_false",
         help="Disable the live web dashboard.",
     )
@@ -379,6 +406,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true",
         help="Frame-by-frame step mode: scrub a rolling buffer and read each "
              "person's classification in the dashboard Debug tab.",
+    )
+    parser.add_argument(
+        "--calibrate", action="store_true",
+        help="Infer busy bands for --source from its occupancy distribution and "
+             "write calib/<stem>.json (needs --zone). Headless unless -v.",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="During --calibrate, show an annotated preview window (otherwise "
+             "headless).",
     )
     return parser
 
@@ -428,7 +465,12 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         busy_low_max=args.busy_low_max,
         busy_medium_max=args.busy_medium_max,
         busy_hysteresis=args.busy_hysteresis,
+        busy_live_window=args.busy_live_window,
+        calib=args.calib,
+        busy_strategy=args.busy_strategy,
         dashboard=args.dashboard,
         dashboard_port=args.dashboard_port,
         debug=args.debug,
+        calibrate=args.calibrate,
+        verbose=args.verbose,
     )
