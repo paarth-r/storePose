@@ -36,6 +36,8 @@ class CompletedWait:
 
     ``wait_seconds`` is the waiting portion; ``serving_seconds`` the at-POS
     portion; ``outcome`` is ``"served"`` (reached POS) or ``"abandoned"``.
+    ``rejected`` marks a too-short outlier (see ``OutlierFilter``): kept for the
+    wait log but excluded from busy/dashboard aggregation.
     """
 
     id: int
@@ -44,6 +46,7 @@ class CompletedWait:
     wait_seconds: float
     serving_seconds: float = 0.0
     outcome: str = "served"
+    rejected: bool = False
 
 
 @dataclass
