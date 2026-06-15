@@ -52,13 +52,14 @@ SCRIPT="viewscripts/${STEM}.sh"
   echo ''
   printf 'CALIB=%q\n' "$CAL"
   echo 'EXTRA=()'
-  echo '# pick up busy calibration if it exists (create it with: main.py --calibrate ...)'
-  echo '[[ -f "$CALIB" ]] && EXTRA+=(--calib "$CALIB")'
+  echo '# pick up busy calibration if it exists, unless STOREPOSE_NO_CALIB is set'
+  echo '# (the launcher sets that env var when you toggle calib off)'
+  echo '[[ -z "${STOREPOSE_NO_CALIB:-}" && -f "$CALIB" ]] && EXTRA+=(--calib "$CALIB")'
   echo ''
   printf 'uv run python main.py --source %q --zone %q' "$VIDEO" "$ZONE"
   [[ -f "$POS" ]] && printf ' --pos-zone %q' "$POS"
   [[ -f "$ALT" ]] && printf ' --alt-zone %q' "$ALT"
-  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "${EXTRA[@]}" "$@"\n' \
+  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "${EXTRA[@]+"${EXTRA[@]}"}" "$@"\n' \
          "runs/${STEM}_waits.csv" "runs/${STEM}_busy.csv" "$PORT"
 } > "$SCRIPT"
 chmod +x "$SCRIPT"
