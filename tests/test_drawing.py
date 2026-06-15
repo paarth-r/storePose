@@ -51,6 +51,30 @@ def test_annotate_tracked_draws_box_and_skeleton():
     assert np.array_equal(frame, _blank())  # input untouched
 
 
+def test_conf_overlay_changes_tracked_label():
+    frame = _blank()
+    p = TrackedPerson(
+        id=2, box=np.array([20, 20, 100, 100], float),
+        keypoints=None, scores=None, coasting=False, color=(0, 255, 0),
+        score=0.91,
+    )
+    without = annotate_tracked(frame, [p], AppConfig(show_conf=False), fps=None)
+    with_conf = annotate_tracked(frame, [p], AppConfig(show_conf=True), fps=None)
+    assert not np.array_equal(without, with_conf)  # confidence text drawn
+
+
+def test_conf_overlay_skipped_when_score_none():
+    # coasting person has score None -> --conf draws nothing extra, no crash
+    frame = _blank()
+    p = TrackedPerson(
+        id=1, box=np.array([20, 20, 100, 100], float),
+        keypoints=None, scores=None, coasting=True, color=(0, 255, 0), score=None,
+    )
+    a = annotate_tracked(frame, [p], AppConfig(show_conf=False), fps=None)
+    b = annotate_tracked(frame, [p], AppConfig(show_conf=True), fps=None)
+    assert np.array_equal(a, b)
+
+
 def test_annotate_tracked_coasting_has_no_pose_and_no_crash():
     p = TrackedPerson(
         id=1, box=np.array([10, 10, 50, 50], float),

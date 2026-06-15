@@ -75,6 +75,7 @@ class AppConfig:
     kpt_thr: float = 0.5
     device: str = "mps"
     show_fps: bool = True
+    show_conf: bool = False
     save: str | None = None
     track: bool = True
     hold_seconds: float = 1.5
@@ -232,6 +233,12 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="show_fps",
         action="store_false",
         help="Disable the FPS overlay.",
+    )
+    parser.add_argument(
+        "--conf",
+        dest="show_conf",
+        action="store_true",
+        help="Overlay each person's detector confidence next to their box/ID.",
     )
     parser.add_argument(
         "--save",
@@ -431,6 +438,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         kpt_thr=args.kpt_thr,
         device=args.device,
         show_fps=args.show_fps,
+        show_conf=args.show_conf,
         save=args.save,
         track=args.track,
         hold_seconds=args.hold_seconds,

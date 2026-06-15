@@ -24,6 +24,11 @@ def test_parses_flags():
     assert cfg.show_fps is False
 
 
+def test_conf_flag():
+    assert from_args([]).show_conf is False
+    assert from_args(["--conf"]).show_conf is True
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
