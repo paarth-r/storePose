@@ -103,6 +103,10 @@ class AppConfig:
     zone_foot_band: float = 0.3
     wait_min_dwell: float = 0.0
     wait_log: str | None = None
+    reject_short: bool = False
+    reject_floor: float = 2.0
+    reject_frac: float = 0.25
+    reject_warmup: int = 10
     busy: bool = False
     busy_log: str | None = None
     busy_window: float = 600.0
@@ -161,6 +165,12 @@ class AppConfig:
             raise ValueError(f"zone_foot_band must be in (0, 1], got {self.zone_foot_band}")
         if self.wait_min_dwell < 0:
             raise ValueError(f"wait_min_dwell must be >= 0, got {self.wait_min_dwell}")
+        if self.reject_floor < 0:
+            raise ValueError(f"reject_floor must be >= 0, got {self.reject_floor}")
+        if not 0.0 <= self.reject_frac <= 1.0:
+            raise ValueError(f"reject_frac must be in [0, 1], got {self.reject_frac}")
+        if self.reject_warmup < 0:
+            raise ValueError(f"reject_warmup must be >= 0, got {self.reject_warmup}")
         from .busy.types import METRICS  # local import avoids package import cost
         if self.busy_window <= 0:
             raise ValueError(f"busy_window must be > 0, got {self.busy_window}")
@@ -362,6 +372,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Append completed waits (id, entered, exited, seconds) as CSV.",
     )
     parser.add_argument(
+        "--reject-short", action="store_true",
+        help="Flag implausibly short visits (likely false detections) as rejected: "
+             "kept in the wait log but excluded from the busy signal.",
+    )
+    parser.add_argument(
+        "--reject-floor", type=float, default=2.0,
+        help="Absolute minimum plausible visit duration in seconds (default: 2.0).",
+    )
+    parser.add_argument(
+        "--reject-frac", type=float, default=0.25,
+        help="Reject a visit shorter than this fraction of the running median for "
+             "its outcome (default: 0.25).",
+    )
+    parser.add_argument(
+        "--reject-warmup", type=int, default=10,
+        help="Accepted samples per outcome before the relative (median) term "
+             "applies; until then only --reject-floor (default: 10).",
+    )
+    parser.add_argument(
         "--busy", action="store_true",
         help="Aggregate occupancy into a live Low/Medium/High busy badge "
              "(needs an active --zone).",
@@ -475,6 +504,10 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         zone_foot_band=args.zone_foot_band,
         wait_min_dwell=args.wait_min_dwell,
         wait_log=args.wait_log,
+        reject_short=args.reject_short,
+        reject_floor=args.reject_floor,
+        reject_frac=args.reject_frac,
+        reject_warmup=args.reject_warmup,
         busy=args.busy or args.busy_log is not None,
         busy_log=args.busy_log,
         busy_window=args.busy_window,

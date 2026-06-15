@@ -50,3 +50,16 @@ def test_read_waits_back_compat_without_new_columns(tmp_path):
     p.write_text("id,entered_s,exited_s,wait_seconds\n1,0.00,10.00,8.00\n")
     waits = read_waits(p)
     assert waits[0].serving_seconds == 0.0 and waits[0].outcome == "served"
+    assert waits[0].rejected is False  # missing column defaults to not-rejected
+
+
+def test_read_waits_parses_rejected_column(tmp_path):
+    from storepose.busy.report import read_waits
+    p = tmp_path / "w.csv"
+    p.write_text(
+        "id,entered_s,exited_s,wait_seconds,serving_seconds,outcome,rejected\n"
+        "1,0.00,2.00,2.00,0.00,served,1\n"
+        "2,0.00,20.00,17.00,3.00,served,0\n"
+    )
+    waits = read_waits(p)
+    assert waits[0].rejected is True and waits[1].rejected is False
