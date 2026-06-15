@@ -6,11 +6,15 @@ from storepose.pose import NUM_KEYPOINTS, PoseEstimator
 
 
 class FakeDetector:
-    def __init__(self, boxes):
+    def __init__(self, boxes, scores=None):
         self._boxes = boxes
+        self._scores = (
+            scores if scores is not None
+            else np.full(len(boxes), 0.9, np.float32)
+        )
 
     def detect(self, frame):
-        return self._boxes
+        return self._boxes, self._scores
 
 
 class FakePoseModel:
@@ -62,6 +66,7 @@ def test_pipeline_composes_and_counts():
     assert isinstance(result, FrameResult)
     assert result.count == 2
     assert result.keypoints.shape == (2, NUM_KEYPOINTS, 2)
+    assert result.det_scores.shape == (2,)  # one detector score per person
 
 
 def test_pipeline_handles_no_people():

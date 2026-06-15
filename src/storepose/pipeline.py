@@ -20,11 +20,13 @@ class FrameResult:
         boxes: ``(N, 4)`` person boxes in ``xyxy``.
         keypoints: ``(N, 17, 2)`` keypoint coordinates.
         scores: ``(N, 17)`` per-keypoint confidences.
+        det_scores: ``(N,)`` per-person detector confidence, aligned to ``boxes``.
     """
 
     boxes: np.ndarray
     keypoints: np.ndarray
     scores: np.ndarray
+    det_scores: np.ndarray
 
     @property
     def count(self) -> int:
@@ -51,6 +53,7 @@ class PosePipeline:
 
     def process(self, frame: np.ndarray) -> FrameResult:
         """Detect people and estimate their poses for ``frame``."""
-        boxes = self._detector.detect(frame)
+        boxes, det_scores = self._detector.detect(frame)
         keypoints, scores = self._pose.estimate(frame, boxes)
-        return FrameResult(boxes=boxes, keypoints=keypoints, scores=scores)
+        return FrameResult(boxes=boxes, keypoints=keypoints, scores=scores,
+                           det_scores=det_scores)

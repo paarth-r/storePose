@@ -17,6 +17,7 @@ def test_annotate_empty_returns_same_shape_and_does_not_mutate_input():
         boxes=np.empty((0, 4), np.float32),
         keypoints=np.empty((0, NUM_KEYPOINTS, 2), np.float32),
         scores=np.empty((0, NUM_KEYPOINTS), np.float32),
+        det_scores=np.empty((0,), np.float32),
     )
     out = annotate(frame, result, AppConfig(), fps=12.0)
     assert out.shape == frame.shape
@@ -29,7 +30,8 @@ def test_annotate_draws_box_pixels_for_a_person():
     boxes = np.array([[20, 20, 100, 100]], np.float32)
     kpts = np.full((1, NUM_KEYPOINTS, 2), 50.0, np.float32)
     scores = np.ones((1, NUM_KEYPOINTS), np.float32)
-    result = FrameResult(boxes=boxes, keypoints=kpts, scores=scores)
+    result = FrameResult(boxes=boxes, keypoints=kpts, scores=scores,
+                         det_scores=np.array([0.9], np.float32))
     out = annotate(frame, result, AppConfig(), fps=30.0)
     # green box edge should appear somewhere on the frame
     assert (out[:, :, 1] > 0).sum() > 0
