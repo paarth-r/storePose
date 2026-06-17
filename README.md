@@ -54,7 +54,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
 | `--max-overlap`  | `0.5`   | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-reid`      | —       | Disable appearance re-id (returning person keeps their id). |
-| `--reid-seconds` | `5.0`   | How long a lost track stays re-attachable.        |
+| `--reid-seconds` | `10.0`  | How long a lost track stays re-attachable.        |
 | `--reid-thr`     | `0.6`   | Appearance similarity floor for re-attach (HSV histogram correlation). |
 | `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
 | `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
@@ -63,6 +63,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
 | `--alt-zone`     | —       | Non-Mashgin checkout zone; enables the Mashgin-vs-traditional comparison. |
 | `--define-alt-zone` | —    | Launch the editor for the non-Mashgin checkout and exit. |
+| `--no-alt`       | —       | Ignore the alt (non-Mashgin) zone even if `--alt-zone` is set; drops the checkout comparison. For when the staffed lane is too occluded / walk-through-heavy to measure. Also a toggle column (`alt`) in the `./video-run.sh` launcher. |
 | `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
 | `--pos-enter-frames`   | `3`   | Consecutive in-POS frames before SERVING (debounces the POS edge). |
 | `--transit-speed`      | `0.4` | Reject walk-throughs: directional speed (body-heights/sec) above which a person counts in no zone; `0` disables. |
@@ -70,6 +71,7 @@ Press **`q`** or **Esc** in the window to quit.
 | `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
 | `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
 | `--wait-min-dwell`     | `0.0` | Min in-zone dwell (s) before counting as in line; rejects pass-through bystanders. |
+| `--min-wait`           | `5.0` | Min real visit time (s): a visit whose outcome-relevant time (POS if served, line if abandoned) is under this is dropped from every average/chart/busy signal (kept in the wait log, flagged `rejected`). Also the dwell required at the other checkout before a Mashgin↔staffed switch counts, so a brief box-clip can't register an instant transition. `0` disables. |
 | `--wait-log`     | —       | Append completed waits to this CSV.               |
 | `--busy`         | —       | Show a live Low/Medium/High busy badge (needs `--zone`). |
 | `--busy-log`     | —       | Write the per-window busy report to this CSV (implies `--busy`). |

@@ -61,7 +61,9 @@ def build_analyzer(config: AppConfig):
     """
     zone = Zone.load(config.zone)
     pos_zone = Zone.load(config.pos_zone) if config.pos_zone else None
-    alt_zone = Zone.load(config.alt_zone) if config.alt_zone else None
+    # --no-alt drops the non-Mashgin checkout even when an alt zone is configured
+    alt_zone = (Zone.load(config.alt_zone)
+                if config.alt_zone and not config.no_alt else None)
     analyzer = QueueAnalyzer(
         zone,
         pos_zone=pos_zone,
@@ -78,6 +80,7 @@ def build_analyzer(config: AppConfig):
         pos_enter_frames=config.pos_enter_frames,
         transit_speed=config.transit_speed,
         transit_window=config.transit_window,
+        min_wait_seconds=config.min_wait,
     )
     return zone, analyzer, pos_zone, alt_zone
 

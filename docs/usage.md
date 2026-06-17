@@ -66,7 +66,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--conf` | — | Overlay each person's detector confidence next to their box/ID. |
 | `--no-track` | — | Raw per-frame boxes, no stable IDs (disables queue/busy). |
 | `--no-reid` | — | Disable appearance re-id; a returning person gets a new id. |
-| `--reid-seconds` | `5.0` | How long a lost track stays re-attachable. |
+| `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-thr` | `0.6` | Appearance similarity floor for re-attach. |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
 | `--save PATH` | — | Write the annotated stream to an `.mp4`. |
@@ -180,6 +180,7 @@ Tuning knobs:
 | `--wait-enter-frames` | `5` | Consecutive in-zone frames before WAITING. |
 | `--wait-exit-seconds` | `2.0` | Out-of-zone time before a wait ends. |
 | `--wait-min-dwell` | `0.0` | Min in-zone dwell (s) before counting — the bystander filter. |
+| `--min-wait` | `5.0` | Min real visit time (s): visits whose outcome-relevant time (POS if served, line if abandoned) fall below it are flagged `rejected` — kept in the wait log but excluded from every average, chart, and the busy signal. Also the dwell required at the other checkout before a Mashgin↔staffed switch counts (no instant transition). `0` disables. |
 | `--transit-speed` | `0.4` | Reject walk-throughs: average speed (body-heights/sec, net displacement over `--transit-window`) above which a person counts in no zone; `0` disables. |
 | `--transit-window` | `1.0` | Trailing window (seconds) over which transit displacement is measured. |
 | `--wait-log PATH` | — | Append completed waits as CSV. |
@@ -187,6 +188,7 @@ Tuning knobs:
 | `--define-pos-zone` | — | Draw the POS polygon and exit. |
 | `--alt-zone PATH` | — | Non-Mashgin checkout zone; the dashboard shows avg serve time at Mashgin (green) vs non-Mashgin (red). |
 | `--define-alt-zone` | — | Draw the non-Mashgin checkout polygon and exit. |
+| `--no-alt` | — | Ignore the alt zone even if `--alt-zone` is set; drops the checkout comparison (use when the staffed lane is too occluded / walk-through-heavy). Also the `alt` toggle column in the launcher. |
 
 ### Rejecting too-short visits (`--reject-short`)
 

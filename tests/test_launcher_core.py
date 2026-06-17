@@ -37,6 +37,17 @@ def test_discover_views_empty(tmp_path):
     assert discover_views(vs, cb) == []
 
 
+def test_discover_views_flags_alt_zone(tmp_path):
+    vs, cb = _make_views(tmp_path, [("aaa", False), ("bbb", False)])
+    zn = tmp_path / "zones"
+    zn.mkdir()
+    (zn / "aaa_alt.json").write_text("{}")            # only aaa has an alt zone
+    views = discover_views(vs, cb, zn)
+    assert {v.stem: v.has_alt for v in views} == {"aaa": True, "bbb": False}
+    # without a zones dir, alt is unknown -> False
+    assert all(v.has_alt is False for v in discover_views(vs, cb))
+
+
 # --- default_state -------------------------------------------------------
 
 def test_default_state_calib_follows_file_presence():
@@ -51,6 +62,7 @@ def test_default_state_calib_follows_file_presence():
 
 V = View("x", Path("x.sh"), has_calib=True)
 V_NO = View("y", Path("y.sh"), has_calib=False)
+V_ALT = View("z", Path("z.sh"), has_calib=False, has_alt=True)
 
 
 def test_toggle_booleans_flip():
@@ -81,6 +93,14 @@ def test_toggle_calib_and_strategy_noop_without_calib_file():
     # but dashboard/debug/conf still work
     assert toggle_(s, Column.DEBUG, view=V_NO).debug is True
     assert toggle_(s, Column.CONF, view=V_NO).conf is True
+
+
+def test_toggle_alt_flips_only_when_alt_zone_present():
+    # alt defaults on; toggling it off is what emits --no-alt
+    assert toggle_(default_state(V_ALT), Column.ALT, view=V_ALT).alt is False
+    # a view without an alt zone can't toggle it (no-op, stays on/—)
+    s = default_state(V_NO)
+    assert toggle_(s, Column.ALT, view=V_NO) == s
 
 
 def toggle_(state, column, view=V):
@@ -123,3 +143,12 @@ def test_build_run_conf_flag():
     env, args = build_run(V, s)
     assert env == {}
     assert args == ["--conf"]
+
+
+def test_build_run_alt_off_emits_no_alt():
+    s = ColumnState(dashboard=True, debug=False, alt=False, calib=True, strategy="auto")
+    env, args = build_run(V, s)
+    assert env == {}
+    assert args == ["--no-alt"]
+    # default (alt on) emits nothing
+    assert build_run(V, default_state(V))[1] == []

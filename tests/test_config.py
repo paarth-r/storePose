@@ -169,7 +169,7 @@ def test_zone_foot_band_default_flag_and_validation():
 def test_reid_defaults_on():
     cfg = from_args([])
     assert cfg.reid is True
-    assert cfg.reid_seconds == 5.0
+    assert cfg.reid_seconds == 10.0
     assert cfg.reid_thr == 0.6
 
 
@@ -254,6 +254,14 @@ def test_alt_zone_flags():
     assert cfg.define_alt_zone is False
     assert from_args(["--define-alt-zone"]).define_alt_zone is True
     assert from_args([]).alt_zone is None
+
+
+def test_no_alt_flag():
+    assert from_args([]).no_alt is False
+    assert from_args(["--no-alt"]).no_alt is True
+    # --no-alt coexists with a configured alt zone (runner drops the zone)
+    cfg = from_args(["--alt-zone", "zones/a.json", "--no-alt"])
+    assert cfg.alt_zone == "zones/a.json" and cfg.no_alt is True
 
 
 def test_debug_flag():

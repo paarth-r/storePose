@@ -23,15 +23,18 @@ class Column(IntEnum):
     DASHBOARD = 0
     DEBUG = 1
     CONF = 2
-    CALIB = 3
-    STRATEGY = 4
+    ALT = 3
+    CALIB = 4
+    STRATEGY = 5
 
 
-COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.CALIB, Column.STRATEGY)
+COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.ALT,
+           Column.CALIB, Column.STRATEGY)
 COLUMN_LABELS = {
     Column.DASHBOARD: "dash",
     Column.DEBUG: "debug",
     Column.CONF: "conf",
+    Column.ALT: "alt",
     Column.CALIB: "calib",
     Column.STRATEGY: "strategy",
 }
@@ -39,11 +42,12 @@ COLUMN_LABELS = {
 
 @dataclass(frozen=True)
 class View:
-    """A saved view: its viewscript and whether a calib file exists for it."""
+    """A saved view: its viewscript and whether calib / alt-zone files exist."""
 
     stem: str
     script: Path
     has_calib: bool
+    has_alt: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,18 +57,22 @@ class ColumnState:
     dashboard: bool = True
     debug: bool = False
     conf: bool = False
+    alt: bool = True
     calib: bool = False
     strategy: str = "auto"
 
 
-def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path) -> list[View]:
-    """Find saved views (``viewscripts/*.sh``), flagging which have a calib file."""
+def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path,
+                   zones_dir: str | Path | None = None) -> list[View]:
+    """Find saved views (``viewscripts/*.sh``), flagging which have calib / alt files."""
     vp = Path(viewscripts_dir)
     cp = Path(calib_dir)
+    zp = Path(zones_dir) if zones_dir is not None else None
     views: list[View] = []
     for script in sorted(vp.glob("*.sh")):
         stem = script.stem
-        views.append(View(stem, script, (cp / f"{stem}.json").is_file()))
+        has_alt = zp is not None and (zp / f"{stem}_alt.json").is_file()
+        views.append(View(stem, script, (cp / f"{stem}.json").is_file(), has_alt))
     return views
 
 
@@ -87,6 +95,8 @@ def toggle(view: View, state: ColumnState, column: Column) -> ColumnState:
         return replace(state, debug=not state.debug)
     if column == Column.CONF:
         return replace(state, conf=not state.conf)
+    if column == Column.ALT:
+        return replace(state, alt=not state.alt) if view.has_alt else state
     if not view.has_calib:
         return state  # calib + strategy disabled without a calib file
     if column == Column.CALIB:
@@ -110,6 +120,8 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--debug")
     if state.conf:
         args.append("--conf")
+    if not state.alt:
+        args.append("--no-alt")
     if not state.calib:
         env["STOREPOSE_NO_CALIB"] = "1"  # suppress the script's auto --calib
     elif state.strategy != "auto":
