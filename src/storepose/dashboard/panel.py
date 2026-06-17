@@ -163,16 +163,23 @@ def render_panel(width: int, height: int, data: PanelData) -> np.ndarray:
     return img
 
 
+def panel_width(video_w: int) -> int:
+    """Panel width = one third of the video (video -> 3/4 of the result).
+
+    Forced so ``video_w + panel_width`` is even, which H.264 (avc1) requires.
+    """
+    pw = round(video_w / 3)
+    if (video_w + pw) % 2:
+        pw += 1
+    return pw
+
+
 def composite(video: np.ndarray, panel_data: PanelData) -> np.ndarray:
     """Place ``video`` on the left 3/4 and a rendered panel on the right 1/4.
 
     The video keeps its native size; the panel is one third of the video width
-    (so the video is exactly 3/4 of the result). The composite width is forced
-    even, which H.264 (avc1) requires.
+    (so the video is exactly 3/4 of the result).
     """
     vh, vw = video.shape[:2]
-    panel_w = round(vw / 3)
-    if (vw + panel_w) % 2:                          # avc1 needs an even width
-        panel_w += 1
-    panel = render_panel(panel_w, vh, panel_data)
+    panel = render_panel(panel_width(vw), vh, panel_data)
     return np.hstack((video, panel))
