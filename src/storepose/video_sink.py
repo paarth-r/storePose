@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 
@@ -9,6 +11,25 @@ import cv2
 import numpy as np
 
 DEFAULT_FPS = 30.0
+
+DEFAULT_RUNS_DIR = "runs"
+
+
+def run_output_path(source: int | str, runs_dir: str | Path = DEFAULT_RUNS_DIR) -> str:
+    """Build an auto-named ``runs/<source>_<timestamp>_<id>.mp4`` path.
+
+    Used by ``--save-mp4`` so a run records itself without the caller picking a
+    name. ``source`` is the run's input — a video path (its stem is used) or a
+    webcam index (named ``webcamN``). A second-granularity timestamp plus a short
+    uuid suffix keeps back-to-back runs from colliding.
+    """
+    if isinstance(source, int):
+        stem = f"webcam{source}"
+    else:
+        stem = Path(source).stem or "video"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    suffix = uuid.uuid4().hex[:6]
+    return str(Path(runs_dir) / f"{stem}_{stamp}_{suffix}.mp4")
 
 # H.264 in an .mp4 container. Plays natively in QuickTime/Preview/browsers;
 # the older 'mp4v' (MPEG-4 Part 2) decodes as green static in many players.

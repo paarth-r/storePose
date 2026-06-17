@@ -26,6 +26,8 @@ class AppConfig:
         device: Compute device — ``"cpu"`` or ``"mps"`` (CoreML).
         show_fps: Whether to overlay a rolling FPS counter.
         save: Optional output path for an annotated .mp4; ``None`` to not save.
+        save_mp4: Auto-save the annotated stream to a timestamped file under
+            ``runs/`` (no path needed); ``--save`` overrides the auto name.
         track: Whether to track people (stable ids, coasting) vs raw per-frame.
         hold_seconds: How long a lost person's box keeps coasting.
         min_hits: Detections before a track is confirmed/drawn.
@@ -77,13 +79,14 @@ class AppConfig:
     show_fps: bool = True
     show_conf: bool = False
     save: str | None = None
+    save_mp4: bool = False
     track: bool = True
     hold_seconds: float = 1.5
     min_hits: int = 3
     iou_thr: float = 0.3
     max_overlap: float = 0.5
     reid: bool = True
-    reid_seconds: float = 10.0
+    reid_seconds: float = 15.0
     reid_thr: float = 0.6
     smooth: bool = True
     smooth_cutoff: float = 1.0
@@ -262,6 +265,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="Also write the annotated stream to this .mp4 file.",
+    )
+    parser.add_argument(
+        "--save-mp4", dest="save_mp4", action="store_true",
+        help="Auto-save the annotated stream to a timestamped runs/<source>_*.mp4 "
+             "(no path needed). --save overrides the auto name if both are given.",
     )
     parser.add_argument(
         "--no-track", dest="track", action="store_false",
@@ -498,6 +506,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         show_fps=args.show_fps,
         show_conf=args.show_conf,
         save=args.save,
+        save_mp4=args.save_mp4,
         track=args.track,
         hold_seconds=args.hold_seconds,
         min_hits=args.min_hits,

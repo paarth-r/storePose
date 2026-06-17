@@ -23,7 +23,7 @@ from .queue.analyzer import QueueAnalyzer
 from .queue.zone import Zone
 from .tracking.appearance import HsvHistogramAppearance
 from .tracking.tracker import MultiObjectTracker
-from .video_sink import VideoSink
+from .video_sink import VideoSink, run_output_path
 from .video_source import VideoSource
 
 WINDOW_NAME = "storePose"
@@ -182,6 +182,10 @@ class Runner:
 
     def run(self) -> None:
         config = self._config
+        # --save (explicit path) wins; else --save-mp4 auto-names into runs/
+        save_path = config.save
+        if save_path is None and config.save_mp4:
+            save_path = run_output_path(config.source)
         print(f"Loading models (mode={config.mode}, device={config.device})...")
         pipeline = PosePipeline(config)
         meter = FpsMeter()
@@ -191,9 +195,9 @@ class Runner:
             with ExitStack() as stack:
                 source = stack.enter_context(VideoSource(config.source))
                 sink = None
-                if config.save:
-                    sink = stack.enter_context(VideoSink(config.save, fps=source.fps))
-                    print(f"Saving annotated video to {config.save}")
+                if save_path:
+                    sink = stack.enter_context(VideoSink(save_path, fps=source.fps))
+                    print(f"Saving annotated video to {save_path}")
 
                 tracker = None
                 if config.track:
@@ -370,5 +374,5 @@ class Runner:
         finally:
             cv2.destroyAllWindows()
 
-        if config.save:
-            print(f"Done. Wrote {config.save}")
+        if save_path:
+            print(f"Done. Wrote {save_path}")
