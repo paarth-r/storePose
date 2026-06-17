@@ -2,24 +2,27 @@
 # view-setup.sh — one-shot setup for a camera/video:
 #   1. draw the zones (1 = line, 2 = Mashgin POS, 3 = non-Mashgin; n = new contour; s = save; q = quit)
 #   2. write a reusable run script to viewscripts/<video>.sh
-#   3. launch the pipeline + dashboard (unless --no-run)
+#   3. calibrate busy bands -> calib/<video>.json (skip with --no-calibrate)
+#   4. launch the pipeline + dashboard (unless --no-run)
 #
 # Usage:
-#   ./view-setup.sh -v <video>          # path, or a bare name found in videos/
+#   ./view-setup.sh -v <video>                  # path, or a bare name found in videos/
+#   ./view-setup.sh -v clip.mp4 --no-calibrate  # skip the calibration pass
 #   ./view-setup.sh -v clip.mp4 --no-run --port 8050
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VIDEO="" ; RUN=1 ; PORT=8000
+VIDEO="" ; RUN=1 ; PORT=8000 ; CALIBRATE=1
 
-usage(){ sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; }
+usage(){ sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -v|--video)  VIDEO="${2:-}"; shift 2;;
-    --no-run)    RUN=0; shift;;
-    --port)      PORT="${2:-}"; shift 2;;
-    -h|--help)   usage; exit 0;;
+    -v|--video)      VIDEO="${2:-}"; shift 2;;
+    --no-run)        RUN=0; shift;;
+    --no-calibrate)  CALIBRATE=0; shift;;
+    --port)          PORT="${2:-}"; shift 2;;
+    -h|--help)       usage; exit 0;;
     *) if [[ -z "$VIDEO" ]]; then VIDEO="$1"; shift; else echo "unknown arg: $1" >&2; exit 1; fi;;
   esac
 done
@@ -64,6 +67,23 @@ SCRIPT="viewscripts/${STEM}.sh"
 } > "$SCRIPT"
 chmod +x "$SCRIPT"
 echo "==> wrote $SCRIPT"
+
+# Calibrate the busy bands from this clip's occupancy so calib/<stem>.json exists
+# from the first run (the viewscript and TUI pick it up automatically). Headless;
+# uses the same zones the run does. Non-fatal — a run works without bands.
+if [[ "$CALIBRATE" -eq 1 ]]; then
+  echo "==> calibrating busy bands (headless, full-clip scan) -> $CAL"
+  CAL_ARGS=(--calibrate --source "$VIDEO" --zone "$ZONE")
+  [[ -f "$POS" ]] && CAL_ARGS+=(--pos-zone "$POS")
+  [[ -f "$ALT" ]] && CAL_ARGS+=(--alt-zone "$ALT")
+  if uv run python main.py "${CAL_ARGS[@]}"; then
+    echo "==> wrote $CAL"
+  else
+    echo "warning: calibration failed; continuing without bands (re-run with --calibrate later)" >&2
+  fi
+else
+  echo "==> skipping calibration (--no-calibrate); calib/<stem>.json not created"
+fi
 
 if [[ "$RUN" -eq 1 ]]; then
   echo "==> launching (dashboard: http://127.0.0.1:${PORT}/) — press q/Esc in the window to quit"
