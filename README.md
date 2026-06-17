@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/python-3.12-5878ff.svg" alt="Python 3.12">
   <img src="https://img.shields.io/badge/runtime-ONNX%20Runtime-0e1421.svg" alt="ONNX Runtime">
   <img src="https://img.shields.io/badge/pose-RTMPose%20%2B%20YOLOX-46c83c.svg" alt="RTMPose + YOLOX">
-  <img src="https://img.shields.io/badge/tests-321%20passing-34d399.svg" alt="321 tests passing">
+  <img src="https://img.shields.io/badge/tests-333%20passing-34d399.svg" alt="333 tests passing">
 </p>
 
 **storePose** turns ordinary store-camera video into a live answer to one operational
@@ -46,7 +46,10 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
   wait/serve, throughput, and a Mashgin-vs-staffed speed strip.
 - **Composite recording** — save a single `.mp4` with the annotated video on the
   left 3/4 and the live dashboard panel on the right 1/4.
-- **Reproducible & tested** — 321 unit tests; every feature has a design spec in
+- **Privacy by default** — every face is pixelated (localized from the face
+  keypoints, falling back to the top of the box) in the live view, recordings,
+  and debug frames; opt out with `--no-blur-faces`.
+- **Reproducible & tested** — 333 unit tests; every feature has a design spec in
   [`docs/superpowers/specs/`](docs/superpowers/specs).
 
 ## Pipeline
@@ -218,6 +221,10 @@ uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --busy --s
 # → runs/clip_<timestamp>.mp4   (left: annotated video · right: dashboard panel)
 ```
 
+Faces are pixelated by default in both the recording and the live window —
+localized from the COCO-17 face keypoints when visible, else the top quarter of
+the person box. Disable with `--no-blur-faces`.
+
 ---
 
 ## Performance
@@ -266,6 +273,7 @@ Most-used flags:
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing. |
 | `--conf` | — | Overlay each person's detector confidence. |
 | `--no-fps` | — | Hide the FPS overlay. |
+| `--no-blur-faces` | — | Disable face pixelation (on by default). |
 | `--save PATH` | — | Write annotated output to this `.mp4` path. |
 | `--save-mp4` | — | Auto-name a composite video+dashboard `.mp4` into `runs/`. |
 | `--no-track` | — | Disable tracking; raw per-frame detections. |
@@ -349,7 +357,7 @@ docs/
 ## Testing
 
 ```bash
-uv run pytest          # 321 tests
+uv run pytest          # 333 tests
 ```
 
 Every feature is developed test-first against a written spec; the specs in
