@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 from storepose.config import from_args, parse_source
-from storepose.video_sink import VideoSink
+from storepose.video_sink import VideoSink, run_output_path
 
 
 def test_parse_source_numeric_is_camera_index():
@@ -26,6 +26,31 @@ def test_from_args_accepts_path_and_save(tmp_path):
 def test_from_args_numeric_source():
     assert from_args(["--source", "3"]).source == 3
     assert from_args([]).save is None
+
+
+def test_save_mp4_flag():
+    assert from_args([]).save_mp4 is False
+    assert from_args(["--save-mp4"]).save_mp4 is True
+
+
+def test_run_output_path_video_uses_stem(tmp_path):
+    path = run_output_path("videos/maricopa-0.mp4", runs_dir=tmp_path)
+    name = os.path.basename(path)
+    assert name.startswith("maricopa-0_")
+    assert name.endswith(".mp4")
+    assert os.path.dirname(path) == str(tmp_path)
+
+
+def test_run_output_path_webcam_index():
+    name = os.path.basename(run_output_path(2))
+    assert name.startswith("webcam2_")
+    assert name.endswith(".mp4")
+
+
+def test_run_output_path_is_unique_across_calls():
+    a = run_output_path("videos/clip.mp4")
+    b = run_output_path("videos/clip.mp4")
+    assert a != b  # uuid suffix keeps back-to-back runs from colliding
 
 
 def test_video_sink_writes_nonempty_mp4(tmp_path):

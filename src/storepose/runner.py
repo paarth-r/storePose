@@ -14,6 +14,8 @@ from .busy.aggregator import BusyAggregator
 from .busy.report import write_busy
 from .busy.types import BusyThresholds
 from .config import AppConfig
+from .dashboard.panel import panel_data as build_panel_data
+from .dashboard.panel import panel_width, render_panel
 from .dashboard.server import DashboardServer
 from .dashboard.state import DashboardState
 from .drawing import annotate, annotate_busy, annotate_queue, annotate_tracked
@@ -23,13 +25,14 @@ from .queue.analyzer import QueueAnalyzer
 from .queue.zone import Zone
 from .tracking.appearance import HsvHistogramAppearance
 from .tracking.tracker import MultiObjectTracker
-from .video_sink import VideoSink
+from .video_sink import VideoSink, run_output_path
 from .video_source import VideoSource
 
 WINDOW_NAME = "storePose"
 _QUIT_KEYS = {ord("q"), 27}  # 'q' or Esc
 _DEFAULT_FPS = 30.0
 _BUSY_REFRESH_SECONDS = 10.0  # how often the Low/Med/High busy label is recomputed
+_PANEL_REFRESH_SECONDS = 0.5  # how often the recorded dashboard panel is redrawn
 
 _DEBUG_BUFFER = 300                              # rolling frames kept for scrub-back
 # arrow keycodes vary by platform (mac / linux / windows); accept all three
@@ -182,6 +185,10 @@ class Runner:
 
     def run(self) -> None:
         config = self._config
+        # --save (explicit path) wins; else --save-mp4 auto-names into runs/
+        save_path = config.save
+        if save_path is None and config.save_mp4:
+            save_path = run_output_path(config.source)
         print(f"Loading models (mode={config.mode}, device={config.device})...")
         pipeline = PosePipeline(config)
         meter = FpsMeter()
@@ -191,9 +198,9 @@ class Runner:
             with ExitStack() as stack:
                 source = stack.enter_context(VideoSource(config.source))
                 sink = None
-                if config.save:
-                    sink = stack.enter_context(VideoSink(config.save, fps=source.fps))
-                    print(f"Saving annotated video to {config.save}")
+                if save_path:
+                    sink = stack.enter_context(VideoSink(save_path, fps=source.fps))
+                    print(f"Saving annotated video to {save_path}")
 
                 tracker = None
                 if config.track:
@@ -267,9 +274,12 @@ class Runner:
                     )
                     print(f"Logging completed waits to {config.wait_log}")
 
+                # a recording composites the dashboard panel, so it needs the
+                # state even when the web server itself is disabled
                 dash_state = None
-                if config.dashboard:
+                if config.dashboard or sink is not None:
                     dash_state = DashboardState()
+                if config.dashboard:
                     dash_server = DashboardServer(dash_state, port=config.dashboard_port)
                     dash_server.start()
                     stack.callback(dash_server.stop)
@@ -288,6 +298,11 @@ class Runner:
                 frame_idx = -1
                 buffer: deque = deque(maxlen=_DEBUG_BUFFER)  # debug scrub-back ring
                 scrub = {"view": 0, "playing": False}        # debug loop state
+                # recording composites the dashboard panel onto the right 1/4;
+                # the panel image is redrawn only every _PANEL_REFRESH_SECONDS
+                show_alt = alt_zone is not None
+                panel_img = None
+                next_panel = 0.0
                 for frame in source:
                     frame_idx += 1
                     rows: list[dict] = []
@@ -346,7 +361,16 @@ class Runner:
                         dash_state.observe(clock, 0, 0)  # keep the dashboard ticking
 
                     if sink is not None:
-                        sink.write(canvas)
+                        # left 3/4 video, right 1/4 dashboard panel, one frame
+                        if dash_state is not None and (
+                            panel_img is None or clock >= next_panel
+                        ):
+                            data = build_panel_data(dash_state, show_alt=show_alt)
+                            panel_img = render_panel(
+                                panel_width(canvas.shape[1]), canvas.shape[0], data)
+                            next_panel = clock + _PANEL_REFRESH_SECONDS
+                        sink.write(cv2.hconcat([canvas, panel_img])
+                                   if panel_img is not None else canvas)
 
                     if config.debug:
                         ok, jpeg = cv2.imencode(".jpg", canvas)
@@ -370,5 +394,5 @@ class Runner:
         finally:
             cv2.destroyAllWindows()
 
-        if config.save:
-            print(f"Done. Wrote {config.save}")
+        if save_path:
+            print(f"Done. Wrote {save_path}")

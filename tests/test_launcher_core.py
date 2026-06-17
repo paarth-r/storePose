@@ -145,6 +145,23 @@ def test_build_run_conf_flag():
     assert args == ["--conf"]
 
 
+def test_toggle_save_flips_for_any_view():
+    assert toggle_(default_state(V), Column.SAVE).save is True
+    assert toggle_(default_state(V_NO), Column.SAVE, view=V_NO).save is True
+
+
+def test_save_off_by_default_emits_nothing():
+    assert default_state(V).save is False
+    assert build_run(V, default_state(V))[1] == []
+
+
+def test_build_run_save_flag():
+    s = ColumnState(dashboard=True, debug=False, save=True, calib=True, strategy="auto")
+    env, args = build_run(V, s)
+    assert env == {}
+    assert args == ["--save-mp4"]
+
+
 def test_build_run_alt_off_emits_no_alt():
     s = ColumnState(dashboard=True, debug=False, alt=False, calib=True, strategy="auto")
     env, args = build_run(V, s)

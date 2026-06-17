@@ -23,17 +23,19 @@ class Column(IntEnum):
     DASHBOARD = 0
     DEBUG = 1
     CONF = 2
-    ALT = 3
-    CALIB = 4
-    STRATEGY = 5
+    SAVE = 3
+    ALT = 4
+    CALIB = 5
+    STRATEGY = 6
 
 
-COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.ALT,
-           Column.CALIB, Column.STRATEGY)
+COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.SAVE,
+           Column.ALT, Column.CALIB, Column.STRATEGY)
 COLUMN_LABELS = {
     Column.DASHBOARD: "dash",
     Column.DEBUG: "debug",
     Column.CONF: "conf",
+    Column.SAVE: "save",
     Column.ALT: "alt",
     Column.CALIB: "calib",
     Column.STRATEGY: "strategy",
@@ -57,6 +59,7 @@ class ColumnState:
     dashboard: bool = True
     debug: bool = False
     conf: bool = False
+    save: bool = False
     alt: bool = True
     calib: bool = False
     strategy: str = "auto"
@@ -95,6 +98,8 @@ def toggle(view: View, state: ColumnState, column: Column) -> ColumnState:
         return replace(state, debug=not state.debug)
     if column == Column.CONF:
         return replace(state, conf=not state.conf)
+    if column == Column.SAVE:
+        return replace(state, save=not state.save)
     if column == Column.ALT:
         return replace(state, alt=not state.alt) if view.has_alt else state
     if not view.has_calib:
@@ -120,6 +125,8 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--debug")
     if state.conf:
         args.append("--conf")
+    if state.save:
+        args.append("--save-mp4")
     if not state.alt:
         args.append("--no-alt")
     if not state.calib:
