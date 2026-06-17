@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" font-family="'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0e17"/>
+      <stop offset="1" stop-color="#121826"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5878ff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#5878ff" stop-opacity="0.10"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="340" fill="url(#bg)"/>
+  <rect width="1280" height="340" fill="url(#fade)"/>
+  <!-- hairline grid -->
+  <g stroke="#232c3f" stroke-width="1" opacity="0.5">
+    <line x1="0" y1="300" x2="1280" y2="300"/>
+    <line x1="640" y1="0" x2="640" y2="340" opacity="0.35"/>
+  </g>
+
+  <!-- left: wordmark -->
+  <g transform="translate(72,96)">
+    <text x="0" y="0" fill="#8b94a9" font-size="15" font-weight="600" letter-spacing="3.4">REALTIME STORE-LINE ANALYTICS</text>
+    <text x="-2" y="74" font-size="84" font-weight="700" letter-spacing="-2">
+      <tspan fill="#eaeef7">store</tspan><tspan fill="#5878ff">Pose</tspan>
+    </text>
+    <text x="0" y="116" fill="#aab2c4" font-size="22" font-weight="500">Multi-person pose &#183; queue state machine &#183; how-busy-is-the-line signal</text>
+
+    <!-- busy band chips -->
+    <g transform="translate(0,150)" font-size="14" font-weight="700" letter-spacing="1.2">
+      <g>
+        <rect x="0" y="0" width="86" height="30" rx="15" fill="#34d39920" stroke="#34d39955"/>
+        <circle cx="18" cy="15" r="5" fill="#34d399"/>
+        <text x="32" y="20" fill="#34d399">LOW</text>
+      </g>
+      <g transform="translate(98,0)">
+        <rect x="0" y="0" width="104" height="30" rx="15" fill="#fbbf2420" stroke="#fbbf2455"/>
+        <circle cx="18" cy="15" r="5" fill="#fbbf24"/>
+        <text x="32" y="20" fill="#fbbf24">MEDIUM</text>
+      </g>
+      <g transform="translate(214,0)">
+        <rect x="0" y="0" width="92" height="30" rx="15" fill="#fb718520" stroke="#fb718555"/>
+        <circle cx="18" cy="15" r="5" fill="#fb7185"/>
+        <text x="32" y="20" fill="#fb7185">HIGH</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- right: stylized scene (zone + skeleton + tag) -->
+  <g transform="translate(0,0)">
+    <!-- queue zone (floor, perspective trapezoid) -->
+    <polygon points="858,272 1110,272 1170,308 800,308" fill="#00b4ff18" stroke="#00b4ff" stroke-opacity="0.8" stroke-width="2"/>
+    <!-- POS zone -->
+    <polygon points="1120,255 1212,255 1238,288 1150,288" fill="#46c83c1a" stroke="#46c83c" stroke-opacity="0.8" stroke-width="2"/>
+
+    <!-- skeleton -->
+    <g stroke="#5878ff" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0.95">
+      <line x1="960" y1="112" x2="960" y2="182"/>            <!-- spine -->
+      <line x1="930" y1="126" x2="990" y2="126"/>            <!-- shoulders -->
+      <line x1="936" y1="182" x2="984" y2="182"/>            <!-- hips -->
+      <polyline points="930,126 910,162 916,196"/>          <!-- left arm -->
+      <polyline points="990,126 1014,160 1010,196"/>         <!-- right arm -->
+      <polyline points="936,182 928,224 934,262"/>           <!-- left leg -->
+      <polyline points="984,182 994,224 990,262"/>           <!-- right leg -->
+    </g>
+    <circle cx="960" cy="96" r="15" fill="none" stroke="#5878ff" stroke-width="3.5"/>
+    <g fill="#8aa0ff">
+      <circle cx="930" cy="126" r="4.5"/><circle cx="990" cy="126" r="4.5"/>
+      <circle cx="910" cy="162" r="4"/><circle cx="1014" cy="160" r="4"/>
+      <circle cx="916" cy="196" r="4"/><circle cx="1010" cy="196" r="4"/>
+      <circle cx="936" cy="182" r="4.5"/><circle cx="984" cy="182" r="4.5"/>
+      <circle cx="928" cy="224" r="4"/><circle cx="994" cy="224" r="4"/>
+      <circle cx="934" cy="262" r="4"/><circle cx="990" cy="262" r="4"/>
+    </g>
+
+    <!-- WAIT tag -->
+    <g transform="translate(1004,84)">
+      <rect x="0" y="0" width="116" height="30" rx="7" fill="#0e1421" stroke="#5878ff" stroke-width="1.5"/>
+      <text x="12" y="20" fill="#eaeef7" font-size="15" font-weight="600" letter-spacing="0.3">WAIT 12.4s</text>
+    </g>
+  </g>
+</svg>

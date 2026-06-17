@@ -1,260 +1,362 @@
-# storePose
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="storePose — realtime store-line analytics" width="100%">
+</p>
 
-Realtime, in-frame multi-person detector: a bounding box around every person plus
-a 17-keypoint (COCO body) **RTMPose** skeleton, streamed live from a webcam.
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.12-5878ff.svg" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/runtime-ONNX%20Runtime-0e1421.svg" alt="ONNX Runtime">
+  <img src="https://img.shields.io/badge/pose-RTMPose%20%2B%20YOLOX-46c83c.svg" alt="RTMPose + YOLOX">
+  <img src="https://img.shields.io/badge/tests-321%20passing-34d399.svg" alt="321 tests passing">
+</p>
 
-Built on [`rtmlib`](https://github.com/Tau-J/rtmlib) (ONNX Runtime) — YOLOX for
-person detection, RTMPose for pose. No `mmcv`/`mmpose` build pain.
+**storePose** turns ordinary store-camera video into a live answer to one operational
+question — **how busy is the checkout line, right now?** — and into a measured
+**comparison between a Mashgin self-checkout and a staffed lane**.
 
-## Setup
+It detects every person, fits a 17-keypoint pose, tracks each one with a stable
+identity through occlusions, and runs a per-person state machine that splits a
+visit into *waiting in line* and *being served*. From that it derives a stable
+**Low / Medium / High** busy signal, per-checkout service times, and a live
+browser dashboard — all on a laptop, in realtime, with no `mmcv`/`mmpose` build
+pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 
-Requires [`uv`](https://docs.astral.sh/uv/) (`brew install uv`). Then:
+---
 
-```bash
-uv sync
+## Highlights
+
+- **Realtime multi-person pose** — YOLOX person detection + RTMPose 17-keypoint
+  skeletons, top-down (one pose pass per person).
+- **Stable identities** — SORT-style Kalman + IoU tracking, One-Euro keypoint
+  smoothing, and HSV-appearance **re-identification** that re-attaches a
+  returning person to their original id.
+- **Queue state machine** — per-person `OUT → WAITING → SERVING → done`, with a
+  bystander/walk-through filter so only people who actually *stop* are counted.
+- **"How busy is the line?"** — a calibrated, hysteresis-stabilized
+  **Low/Medium/High** label per 10-minute window from a robust occupancy
+  statistic.
+- **Checkout comparison** — Mashgin self-checkout vs the staffed lane, with
+  **kiosk-count normalization** (`--num-mashgins`) and **occlusion-tolerant
+  re-assignment** so one occluded serve isn't miscounted as two.
+- **Live dashboard** — a zero-dependency localhost web app with occupancy,
+  wait/serve, throughput, and a Mashgin-vs-staffed speed strip.
+- **Composite recording** — save a single `.mp4` with the annotated video on the
+  left 3/4 and the live dashboard panel on the right 1/4.
+- **Reproducible & tested** — 321 unit tests; every feature has a design spec in
+  [`docs/superpowers/specs/`](docs/superpowers/specs).
+
+## Pipeline
+
+```mermaid
+flowchart LR
+  A([Camera / video]) --> B[YOLOX<br/>person detection]
+  B --> C[RTMPose<br/>17 keypoints]
+  C --> D[SORT tracker<br/>Kalman · IoU · One-Euro<br/>appearance re-id]
+  D --> E[Queue analyzer<br/>waiting / serving<br/>state machine]
+  E --> F[Busy aggregator<br/>Low / Med / High]
+  E --> G([Live dashboard])
+  E --> H([Composite .mp4])
+  F --> G
 ```
 
-This creates a Python 3.12 virtualenv and installs all dependencies. Models
-(~140 MB) download automatically to `~/.cache/rtmlib` on first run.
+Each stage has one job and a clean interface; the detector and pose models are
+injectable, so the pipeline and analysis logic are unit-tested without weights.
 
-## Run
+---
 
-> Quickstart with copy-paste commands for running, zone setup, and the busy
-> signal: [`docs/usage.md`](docs/usage.md).
+## Quickstart
+
+Requires [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
 
 ```bash
-uv run python main.py                       # default webcam, balanced, CoreML
-uv run python main.py --source 1            # a different camera
-uv run python main.py --source videos/clip.mp4          # run on a video file
-uv run python main.py --source videos/clip.mp4 --save out.mp4   # display + save
-uv run python main.py --mode lightweight    # faster, slightly less accurate
-uv run python main.py --device cpu          # CPU fallback if CoreML misbehaves
+uv sync                                   # Python 3.12 venv + deps
+uv run python main.py                     # default webcam, balanced, CoreML
+uv run python main.py --source videos/clip.mp4   # run on a file
 ```
 
-`--source` is a webcam index when numeric, otherwise a path to a video file.
-`--save PATH` writes the annotated stream to an .mp4 (display stays live).
+Models (~140 MB) download to `~/.cache/rtmlib` on first run. Press **`q`** or
+**Esc** in the window to quit.
 
-Press **`q`** or **Esc** in the window to quit.
-
-### Flags
-
-| Flag          | Default    | Description                                        |
-|---------------|------------|----------------------------------------------------|
-| `--source`    | `0`        | Webcam index, or path to a video file.             |
-| `--save`      | —          | Write annotated output to this .mp4 path.          |
-| `--mode`      | `balanced` | `lightweight` \| `balanced` \| `performance`.      |
-| `--det-conf`  | `0.7`      | Person-detection confidence threshold.             |
-| `--det-overlap` | `0.8`    | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
-| `--kpt-thr`   | `0.5`      | Keypoint confidence threshold for drawing.         |
-| `--device`    | `mps`      | `mps` (CoreML) or `cpu`.                           |
-| `--no-fps`    | —          | Hide the FPS overlay.                              |
-| `--no-track`     | —       | Disable tracking; draw raw per-frame detections.  |
-| `--hold-seconds` | `1.5`   | How long a lost person's box keeps coasting.      |
-| `--min-hits`     | `3`     | Detections before a track is confirmed/drawn.     |
-| `--iou-thr`      | `0.3`   | Min IoU to associate a detection to a track.      |
-| `--max-overlap`  | `0.5`   | Drop a coasting ghost overlapping another box by more than this. |
-| `--no-reid`      | —       | Disable appearance re-id (returning person keeps their id). |
-| `--reid-seconds` | `10.0`  | How long a lost track stays re-attachable.        |
-| `--reid-thr`     | `0.6`   | Appearance similarity floor for re-attach (HSV histogram correlation). |
-| `--no-smooth`    | —       | Disable One-Euro keypoint smoothing.              |
-| `--zone`         | —       | Queue-zone JSON; enables waiting-in-line detection. |
-| `--define-zone`  | —       | Launch the interactive zone editor and exit.      |
-| `--pos-zone`     | —       | Mashgin POS-zone JSON; splits line time into waiting vs serving (needs `--zone`). |
-| `--define-pos-zone` | —    | Launch the editor for the POS zone and exit.       |
-| `--alt-zone`     | —       | Non-Mashgin checkout zone; enables the Mashgin-vs-traditional comparison. |
-| `--define-alt-zone` | —    | Launch the editor for the non-Mashgin checkout and exit. |
-| `--no-alt`       | —       | Ignore the alt (non-Mashgin) zone even if `--alt-zone` is set; drops the checkout comparison. For when the staffed lane is too occluded / walk-through-heavy to measure. Also a toggle column (`alt`) in the `./video-run.sh` launcher. |
-| `--wait-enter-frames`  | `5`   | Consecutive in-zone frames before WAITING.      |
-| `--pos-enter-frames`   | `3`   | Consecutive in-POS frames before SERVING (debounces the POS edge). |
-| `--transit-speed`      | `0.4` | Reject walk-throughs: directional speed (body-heights/sec) above which a person counts in no zone; `0` disables. |
-| `--wait-exit-seconds`  | `2.0` | Out-of-condition time before WAITING ends.     |
-| `--zone-coverage`      | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
-| `--zone-foot-band`     | `0.3` | Bottom fraction of the box used as the foot region. |
-| `--wait-min-dwell`     | `0.0` | Min in-zone dwell (s) before counting as in line; rejects pass-through bystanders. |
-| `--min-wait`           | `5.0` | Min real visit time (s): a visit whose outcome-relevant time (POS if served, line if abandoned) is under this is dropped from every average/chart/busy signal (kept in the wait log, flagged `rejected`). Also the dwell required at the other checkout before a Mashgin↔staffed switch counts, so a brief box-clip can't register an instant transition. `0` disables. |
-| `--wait-log`     | —       | Append completed waits to this CSV.               |
-| `--busy`         | —       | Show a live Low/Medium/High busy badge (needs `--zone`). |
-| `--busy-log`     | —       | Write the per-window busy report to this CSV (implies `--busy`). |
-| `--busy-window`  | `600`   | Busy aggregation window, seconds (600 = 10 min).  |
-| `--busy-subwindow` | `0.0` | Two-level smoothing sub-window, seconds; 0 = off (e.g. 60 = per-minute robust estimate). |
-| `--busy-metric`  | `occupancy_p90` | Window feature driving the label.         |
-| `--busy-low-max` | `1.0`   | Upper bound of the LOW band (metric units). Calibrate. |
-| `--busy-medium-max` | `3.0` | Upper bound of the MEDIUM band (metric units). Calibrate. |
-| `--busy-hysteresis` | `0.0` | Cross-window deadband to suppress label flapping. |
-| `--no-dashboard`    | —     | Disable the live web dashboard.                   |
-| `--dashboard-port`  | `8000`| Port for the live dashboard server.               |
-| `--debug`           | —     | Step frame-by-frame (scrub a rolling buffer); per-person reasoning in the dashboard Debug tab. |
-
-## Tracking & smoothing
-
-By default each person gets a stable `ID n` and a SORT-style tracker (Kalman +
-IoU) keeps that box alive through brief occlusions (coasting), while a One-Euro
-filter smooths the skeleton. A box that loses its detection is predicted forward
-for `--hold-seconds` (skeleton hidden while coasting), then dropped. By default,
-appearance re-id (an HSV torso-color histogram) re-attaches a returning person to
-their original id within `--reid-seconds`; disable it with `--no-reid`. A
-genuinely new person still gets a new id. Each id keeps a persistent overlay
-color across re-attach.
-
-A/B the behavior with `--no-track` (raw per-frame boxes) and `--no-smooth`.
-
-## Waiting in line
-
-Define a queue area once per (fixed) camera, then storePose flags each person
-**waiting** in it, shows a live **count**, and logs **per-person wait time**.
+The fastest path to a fully-configured camera view — draw zones, calibrate the
+busy bands, and launch — is a single command:
 
 ```bash
-# 1. draw zones: '1' line, '2' Mashgin POS, '3' non-Mashgin; 'n' new contour, 's' save, 'q' quit
+./view-setup.sh -v videos/clip.mp4        # zones → calibrate → run + dashboard
+```
+
+It writes a reusable `viewscripts/<clip>.sh`. Launch saved views later from an
+arrow-key menu:
+
+```bash
+./video-run.sh                            # interactive launcher (scroll, toggle, Enter)
+```
+
+> A complete, copy-paste walkthrough lives in **[`docs/usage.md`](docs/usage.md)**.
+
+---
+
+## Watching a line
+
+Define the line and checkout areas once per fixed camera, then storePose tracks
+each visit through them. The interactive editor draws all zones in one session
+(`1` line, `2` Mashgin POS, `3` non-Mashgin lane; `n` new contour, `s` save):
+
+```bash
 uv run python main.py --define-zone --source videos/clip.mp4
-
-# 2. run with the zone; optionally log completed waits to CSV
-uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --wait-log waits.csv
+uv run python main.py --source videos/clip.mp4 \
+    --zone zones/clip.json --pos-zone zones/clip_pos.json --wait-log waits.csv
 ```
 
-The editor draws both zones in one session — **`1`** for line contours, **`2`**
-for POS — and either zone may be **several disjoint contours** (`n` starts a new
-one); a person counts as in-zone if inside **any** contour. `s` writes the line
-contours to `zones/<name>.json` and the POS contours to `zones/<name>_pos.json`.
+A person is **in-zone** by an OR of two signals — the visible-ankle midpoint
+inside the polygon, *or* their foot-region box coverage — so a held position
+isn't lost when feet leave frame or an ankle drifts out. People walking *through*
+a zone are rejected by a directional **transit filter**; only people who stop are
+counted. Each visit flows through:
 
-**In-zone test (OR of two signals):** a person counts as in-zone if **either**
-the visible-ankle midpoint is inside the polygon (precise, ignores box padding
-such as carts) **or** the **foot region** of the box — its bottom
-`--zone-foot-band` (default 30%) — is ≥ `--zone-coverage` inside the zone.
-Coverage uses only the foot region, not the whole box, because a standing
-person's box is mostly torso/head that projects *above* a floor zone. The OR
-means a held position isn't lost when feet leave frame or an ankle drifts
-outside while the body is still in the zone — the wait timer keeps running.
-
-A person is "waiting" once that in-zone test holds for `--wait-enter-frames`
-(default 5) consecutive frames; they stop after `--wait-exit-seconds` out of the
-zone or when their track is lost. People walking *through* a zone (a walkway by a
-checkout) are rejected by a **transit filter** (`--transit-speed`): each person's
-velocity-vector EMA flags sustained directional motion, so only people who have
-**stopped** count. In-place movement (fetching items, shuffling — whose back-and-
-forth cancels in the vector average) still counts; set `--transit-speed 0` to
-disable the filter entirely.
-
-Visual states (drawn in each person's **persistent id color**, not a shared hue):
-- **Joining** (candidate): a "sheer" fill rises over the box as a flood
-  animation, with a join `%`, while the 5 frames accrue.
-- **In line**: a translucent overlay on the box plus a `WAIT n.n s` timer; the
-  header shows `in line: N`. The zone polygon stays orange.
-
-Boxes are already Kalman-smoothed by the tracker (constant-velocity, low process
-noise), so in-line boxes are stable. The CSV rows are
-`id, entered_s, exited_s, wait_seconds`.
-
-Requires tracking (on by default) — waiting state is keyed by stable id.
-
-### Waiting vs at-POS
-
-Add a second **POS zone** (the register area) to split each visit into *waiting*
-(in the line zone, not yet at POS) and *serving* (at the POS):
-
-```bash
-uv run python main.py --define-pos-zone --source videos/clip.mp4   # draw the POS polygon
-uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --pos-zone zones/clip_pos.json --wait-log waits.csv
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> OUT
+  OUT --> WAITING: in line zone
+  OUT --> SERVING: straight to checkout
+  WAITING --> SERVING: reaches POS
+  WAITING --> [*]: leaves first (abandoned)
+  SERVING --> [*]: clear exit (served)
+  SERVING --> PARKED: occluded, no clear exit
+  PARKED --> SERVING: new apparition adopts
+  PARKED --> [*]: hold lapses (served)
 ```
 
-A person flows OUT → WAITING → SERVING → done; each frame's time is attributed to
-the state they are in, and time spent out of detection (re-identified within the
-re-id window) is credited to the state they held when lost. With a POS zone the
-wait-log columns become `id, entered_s, exited_s, wait_seconds, serving_seconds,
-outcome`, where `outcome` is `served` (reached POS) or `abandoned` (left the line
-first). The overlay draws the POS zone in azure and tags people `POS n.n s` while
-being served; the header shows `in line: N   at POS: M`.
+Time is attributed to whichever state the person is in each frame; gaps where a
+track is briefly lost (and re-identified) are credited to the state held when it
+disappeared. Completed visits are logged as
+`id, entered_s, exited_s, wait_seconds, serving_seconds, outcome, rejected`.
 
-## How busy is the line? (busy signal)
+### Occlusion-tolerant checkout re-assignment
 
-The headline question: given store video, **how busy is the checkout line?**
-storePose answers it as a stable **Low / Medium / High** label per **10-minute
-window**, by aggregating the noisy per-frame waiting count into a robust
-per-window statistic and mapping it to a band.
+At a busy checkout a served person is often occluded and their track dropped — a
+naive tracker then mints a *second* serve when they reappear. storePose instead
+**parks** a serve that vanishes without a clear exit and lets the next apparition
+in the same checkout (within a time + spatial gate) **adopt** it and continue the
+timer, so one real serve stays one record. Enabled for the non-Mashgin lane by
+default (`--pos-reassign-seconds`, `0` to disable); `--pos-reassign-mashgin`
+extends it to Mashgin.
+
+---
+
+## How busy is the line?
+
+storePose answers the headline question as a stable **Low / Medium / High** label
+per **10-minute window**, by aggregating the noisy per-frame waiting count into a
+robust, time-weighted statistic (90th-percentile occupancy by default) and
+mapping it to a band. Two stabilizers keep it from flickering: two-level
+sub-window smoothing (`--busy-subwindow`) and a cross-window deadband
+(`--busy-hysteresis`).
 
 ```bash
-# live: badge on screen + per-window report written at exit
-uv run python main.py --source videos/clip.mp4 --zone zones/clip.json \
-    --busy-log busy.csv
+# live: on-screen badge + per-window report at exit
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --busy-log busy.csv
 
-# offline: turn an existing wait log into per-window labels
+# offline: wait log → per-window labels; hand-label truth; score predictions
 uv run python busy_report.py aggregate waits.csv --window 600 -o busy.csv
-
-# hand-label a video's windows to build a ground-truth set (resumable)
 uv run python busy_report.py label videos/clip.mp4 -o truth.csv --window 600
-
-# score predicted labels against the ground-truth CSV
 uv run python busy_report.py eval busy.csv truth.csv
 ```
 
-The label is driven by a **time-weighted robust statistic** of occupancy (the
-90th-percentile waiting count by default), which ignores 1–2-second flicker but
-reacts to a sustained crowd. Two further stabilizers: `--busy-subwindow` adds
-**two-level smoothing** (compute the metric per short sub-window, then take the
-median across the window, so one busy minute can't dominate), and
-`--busy-hysteresis` adds a cross-window deadband so the output doesn't oscillate
-near a threshold. Bystanders who merely pass through the line zone are rejected
-by `--wait-min-dwell` (a person must linger N seconds before counting).
+Band thresholds are **calibrated per view** from the clip's own occupancy
+distribution — no hand-tuned magic numbers:
 
-The `label` command steps through a video window-by-window and records your
-Low/Medium/High judgement to a `window_index,level` CSV — resumable, and exactly
-the format `eval` consumes. The band thresholds
-(`--busy-low-max`, `--busy-medium-max`) are **placeholders that must be
-calibrated** on real footage against a labeled evaluation set.
+```bash
+uv run python main.py --calibrate --source videos/clip.mp4 --zone zones/clip.json
+# → writes calib/clip.json; runs auto-load it. (view-setup.sh does this for you.)
+```
 
-See [`docs/problem-definition.md`](docs/problem-definition.md) for the precise
-definition of Low/Medium/High, the alternatives considered (occupancy vs.
-parties vs. wait-time), and the evaluation plan (ordinal metrics, ground-truth
-labeling, cross-store protocol).
+> The precise Low/Medium/High definition, the alternatives weighed (occupancy vs.
+> parties vs. wait-time), and the evaluation protocol are in
+> **[`docs/problem-definition.md`](docs/problem-definition.md)**.
 
-## Live dashboard
+---
 
-Every run auto-starts a localhost web dashboard (no extra dependencies) and opens
-it in your browser, with three live charts: **occupancy** (in line / at POS with
-moving averages), **wait & serve** moving averages, and **throughput**
-(served/min). Disable with `--no-dashboard`; change the port with
-`--dashboard-port`. On a **file** source the timeline is video time; on a **webcam**
-it is real time.
+## Mashgin vs. the staffed lane
+
+With a non-Mashgin checkout zone defined, the dashboard surfaces a live
+service-speed comparison. Because several Mashgin kiosks run in parallel,
+`--num-mashgins N` divides the Mashgin per-customer time (and the
+faster-multiplier / saves-per-person) by `N` to reflect the system's real
+throughput against a single staffed lane.
+
+<p align="center">
+  <img src="docs/assets/checkout-speed.png" alt="Checkout speed: Mashgin self-checkout vs staffed lane" width="92%">
+</p>
+
+---
+
+## Live dashboard & recording
+
+Every run auto-starts a localhost dashboard (no extra dependencies) and opens it
+in your browser: occupancy, wait/serve moving averages, throughput, the busy
+badge, and the checkout-speed strip. On a file source the timeline is video time;
+on a webcam it is real time. Disable with `--no-dashboard`.
+
+`--save-mp4` records the run as a single composite — annotated video on the left
+3/4, the live dashboard panel on the right 1/4 — auto-named into `runs/`:
+
+<p align="center">
+  <img src="docs/assets/panel.png" alt="Recorded dashboard side panel" height="360">
+</p>
+
+```bash
+uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --busy --save-mp4
+# → runs/clip_<timestamp>.mp4   (left: annotated video · right: dashboard panel)
+```
+
+> _Maintainer note: drop a full dashboard screenshot at `docs/assets/dashboard.png`
+> and an annotated frame at `docs/assets/annotated.png` to complete the gallery._
+
+---
 
 ## Performance
 
-Measured on an Apple M5 Max (`balanced` mode). Top-down pose runs once per
-person, so framerate scales with people in frame:
+Measured on an Apple M5 Max (`balanced` mode). Top-down pose runs once per person,
+so framerate scales with the number of people in frame:
 
-| Device       | Detector | Pose/person | 1 person | 3 people |
-|--------------|----------|-------------|----------|----------|
-| `mps` CoreML | ~18 ms   | ~4 ms       | ~45 fps  | ~32 fps  |
-| `cpu`        | ~156 ms  | ~14 ms      | ~6 fps   | ~5 fps   |
+| Device       | Detector | Pose / person | 1 person | 3 people |
+|--------------|----------|---------------|----------|----------|
+| `mps` CoreML | ~18 ms   | ~4 ms         | ~45 fps  | ~32 fps  |
+| `cpu`        | ~156 ms  | ~14 ms        | ~6 fps   | ~5 fps   |
 
-CoreML is ~8× faster here — keep the default `--device mps` for realtime. Use
+CoreML is ~8× faster here — keep the default `--device mps` for realtime, and
 `--mode lightweight` for higher framerates in crowded scenes.
 
-## Architecture
+---
+
+## CLI reference
+
+Most-used flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source` | `0` | Webcam index (numeric) or path to a video file. |
+| `--mode` | `balanced` | `lightweight` \| `balanced` \| `performance`. |
+| `--device` | `mps` | `mps` (CoreML) or `cpu`. |
+| `--zone` / `--pos-zone` / `--alt-zone` | — | Line / Mashgin POS / non-Mashgin checkout zone JSON. |
+| `--define-zone` | — | Launch the interactive zone editor and exit. |
+| `--busy` | — | Live Low/Medium/High busy badge (needs `--zone`). |
+| `--calibrate` / `--calib PATH` | — | Infer busy bands from the clip / load a calib file. |
+| `--num-mashgins` | `1` | Parallel Mashgin kiosks; normalizes the checkout comparison. |
+| `--save-mp4` | — | Record a composite video+dashboard `.mp4` into `runs/`. |
+| `--debug` | — | Frame-by-frame scrub with per-person reasoning in the dashboard. |
+| `--no-dashboard` | — | Disable the live web dashboard. |
+
+<details>
+<summary><b>Full flag reference</b></summary>
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--source` | `0` | Webcam index, or path to a video file. |
+| `--mode` | `balanced` | `lightweight` \| `balanced` \| `performance`. |
+| `--device` | `mps` | `mps` (CoreML) or `cpu`. |
+| `--det-conf` | `0.7` | Person-detection confidence threshold. |
+| `--det-overlap` | `0.8` | Drop a box more than this fraction inside a larger one. |
+| `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing. |
+| `--conf` | — | Overlay each person's detector confidence. |
+| `--no-fps` | — | Hide the FPS overlay. |
+| `--save PATH` | — | Write annotated output to this `.mp4` path. |
+| `--save-mp4` | — | Auto-name a composite video+dashboard `.mp4` into `runs/`. |
+| `--no-track` | — | Disable tracking; raw per-frame detections. |
+| `--hold-seconds` | `1.5` | How long a lost person's box keeps coasting. |
+| `--min-hits` | `3` | Detections before a track is confirmed/drawn. |
+| `--iou-thr` | `0.3` | Min IoU to associate a detection to a track. |
+| `--max-overlap` | `0.5` | Drop a coasting ghost overlapping another box by more than this. |
+| `--no-reid` | — | Disable appearance re-id. |
+| `--reid-seconds` | `15.0` | How long a lost track stays re-attachable. |
+| `--reid-thr` | `0.6` | Appearance similarity floor for re-attach (HSV histogram). |
+| `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
+| `--smooth-cutoff` / `--smooth-beta` | `1.0` / `0.007` | One-Euro filter parameters. |
+| `--zone` | — | Queue-zone JSON; enables waiting-in-line detection. |
+| `--define-zone` | — | Launch the interactive zone editor and exit. |
+| `--pos-zone` | — | Mashgin POS zone; splits line time into waiting vs serving. |
+| `--define-pos-zone` | — | Editor for the POS zone, then exit. |
+| `--alt-zone` | — | Non-Mashgin checkout zone; enables the comparison. |
+| `--define-alt-zone` | — | Editor for the non-Mashgin checkout, then exit. |
+| `--no-alt` | — | Ignore the alt zone even if set (too-occluded staffed lane). |
+| `--wait-enter-frames` | `5` | Consecutive in-zone frames before WAITING. |
+| `--pos-enter-frames` | `3` | Consecutive in-POS frames before SERVING. |
+| `--transit-speed` | `0.4` | Reject walk-throughs above this directional speed; `0` disables. |
+| `--transit-window` | `1.0` | Trailing window (s) for transit displacement. |
+| `--wait-exit-seconds` | `2.0` | Out-of-condition time before WAITING ends. |
+| `--zone-coverage` | `0.5` | Foot-region fraction inside the zone when ankles are occluded. |
+| `--zone-foot-band` | `0.3` | Bottom fraction of the box used as the foot region. |
+| `--wait-min-dwell` | `0.0` | Min in-zone dwell (s) before counting; rejects pass-by bystanders. |
+| `--min-wait` | `5.0` | Min real visit time (s); shorter visits are flagged `rejected`. |
+| `--pos-reassign-seconds` | `20.0` | Hold window for an occluded checkout serve; `0` disables. |
+| `--pos-reassign-mashgin` | — | Also apply occlusion re-assignment to Mashgin. |
+| `--wait-log PATH` | — | Append completed visits to this CSV. |
+| `--reject-short` | — | Flag implausibly short visits as `rejected`. |
+| `--reject-floor` / `--reject-frac` / `--reject-warmup` | `2.0` / `0.25` / `10` | Outlier-visit thresholds. |
+| `--busy` | — | Live Low/Medium/High badge (needs `--zone`). |
+| `--busy-log PATH` | — | Per-window busy report CSV at exit (implies `--busy`). |
+| `--busy-window` | `600` | Busy aggregation window, seconds. |
+| `--busy-subwindow` | `0.0` | Two-level smoothing sub-window, seconds; `0` = off. |
+| `--busy-metric` | `occupancy_p90` | Window feature driving the label. |
+| `--busy-low-max` / `--busy-medium-max` | `1.0` / `3.0` | Manual band bounds (else calibrate). |
+| `--busy-hysteresis` | `0.0` | Cross-window deadband to suppress label flapping. |
+| `--busy-live-window` | `30.0` | Trailing seconds the live badge summarizes. |
+| `--calibrate` | — | Infer busy bands from `--source` → `calib/<stem>.json` (needs `--zone`). |
+| `--calib PATH` | — | Load calibrated bands; overrides manual `--busy-*-max`. |
+| `--busy-strategy` | — | Override the calibrated band set (`skewed`/`thirds`/`peak`). |
+| `--num-mashgins` | `1` | Parallel Mashgin kiosks; normalizes the checkout comparison. |
+| `--no-dashboard` | — | Disable the live web dashboard. |
+| `--dashboard-port` | `8000` | Port for the live dashboard server. |
+| `--debug` | — | Frame-by-frame scrub; per-person reasoning in the dashboard. |
+| `-v`, `--verbose` | — | Show a preview window during `--calibrate`. |
+
+</details>
+
+---
+
+## Repository layout
 
 ```
-main.py            CLI entrypoint
+main.py             CLI entrypoint (run / define-zone / calibrate)
+busy_report.py      offline busy tooling: aggregate · label · eval
+view-setup.sh       one-shot: draw zones → calibrate → write viewscript → run
+video-run.sh        arrow-key launcher for saved views (curses)
 src/storepose/
-  config.py        AppConfig + CLI parsing/validation
-  model_zoo.py     mode -> model URLs/sizes (from rtmlib)
-  detector.py      PersonDetector  (YOLOX)      -> boxes
-  pose.py          PoseEstimator   (RTMPose)    -> keypoints + scores
-  pipeline.py      PosePipeline.process(frame)  -> FrameResult
-  drawing.py       annotate(frame, result, fps) -> annotated frame
-  fps.py           FpsMeter (rolling average)
-  video_source.py  VideoSource (webcam or file, context manager)
-  video_sink.py    VideoSink (annotated .mp4 writer, context manager)
-  runner.py        capture -> process -> (track) -> annotate -> display loop
-  tracking/        SORT tracker: assignment, kalman, smoothing, track, tracker
-  queue/           zone, analyzer (waiting state machine), zone_editor
-  busy/            occupancy timeline, BusyAggregator (window -> Low/Med/High)
-  eval/            ordinal metrics + ground-truth labeling helpers
-busy_report.py     offline CLI: aggregate waits.csv, label video, eval vs. truth
+  config.py         AppConfig + CLI parsing/validation
+  pipeline.py       PosePipeline.process(frame) → FrameResult
+  detector.py       PersonDetector (YOLOX) · pose.py  PoseEstimator (RTMPose)
+  runner.py         capture → process → track → analyze → annotate → display/record
+  drawing.py        skeleton / box / zone / busy-badge overlays
+  video_source.py   VideoSource (webcam | file)  · video_sink.py  VideoSink (.mp4)
+  tracking/         SORT tracker: assignment, kalman, smoothing, track, appearance
+  queue/            zone, analyzer (waiting/serving + occlusion re-assignment), editor
+  busy/             occupancy timeline, aggregator, per-view calibration, report
+  dashboard/        localhost server, state, metrics, HTML page, recorded panel
+  launcher.py       curses launcher  · launcher_core.py  (pure, testable model)
+  eval/             ordinal metrics + ground-truth labeling helpers
+docs/
+  usage.md          copy-paste walkthrough
+  problem-definition.md   the "how busy" definition + evaluation plan
+  superpowers/specs/      one design doc per feature
 ```
 
-Each stage has one job and a clean interface; detector and pose are injectable,
-so the pipeline and pose short-circuit logic are unit-tested without weights.
-
-## Tests
+## Testing
 
 ```bash
-uv run pytest
+uv run pytest          # 321 tests
 ```
+
+Every feature is developed test-first against a written spec; the specs in
+[`docs/superpowers/specs/`](docs/superpowers/specs) double as the design record.
+
+## Built on
+
+- **[rtmlib](https://github.com/Tau-J/rtmlib)** — ONNX Runtime inference for
+  RTMPose / YOLOX, no `mmcv`/`mmpose` build.
+- **[RTMPose](https://arxiv.org/abs/2303.07399)** (Jiang et al., 2023) — top-down
+  pose estimation.
+- **[YOLOX](https://arxiv.org/abs/2107.08430)** (Ge et al., 2021) — person
+  detection.
+- **SORT** (Bewley et al., 2016) — Kalman + IoU tracking.
+- **[1-Euro filter](https://gery.casiez.net/1euro/)** (Casiez et al., 2012) —
+  low-latency keypoint smoothing.
