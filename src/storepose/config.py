@@ -56,6 +56,11 @@ class AppConfig:
         zone_foot_band: Bottom fraction of the box treated as the foot region
             for coverage.
         wait_log: Optional CSV path to append completed waits.
+        pos_reassign_seconds: Hold window for an occluded checkout serve so a new
+            apparition in the same checkout can adopt it and continue the timer;
+            0 disables. See ``QueueAnalyzer`` reassignment.
+        pos_reassign_mashgin: Also apply occlusion re-assignment to the Mashgin
+            checkout (default off; non-Mashgin only).
         busy: Aggregate occupancy into a Low/Medium/High busy signal and show a
             live badge (requires an active zone).
         busy_log: Optional CSV path for the per-window busy report at exit.
@@ -108,6 +113,8 @@ class AppConfig:
     wait_min_dwell: float = 0.0
     min_wait: float = 5.0
     wait_log: str | None = None
+    pos_reassign_seconds: float = 20.0
+    pos_reassign_mashgin: bool = False
     reject_short: bool = False
     reject_floor: float = 2.0
     reject_frac: float = 0.25
@@ -172,6 +179,9 @@ class AppConfig:
             raise ValueError(f"wait_min_dwell must be >= 0, got {self.wait_min_dwell}")
         if self.min_wait < 0:
             raise ValueError(f"min_wait must be >= 0, got {self.min_wait}")
+        if self.pos_reassign_seconds < 0:
+            raise ValueError(
+                f"pos_reassign_seconds must be >= 0, got {self.pos_reassign_seconds}")
         if self.reject_floor < 0:
             raise ValueError(f"reject_floor must be >= 0, got {self.reject_floor}")
         if not 0.0 <= self.reject_frac <= 1.0:
@@ -400,6 +410,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Append completed waits (id, entered, exited, seconds) as CSV.",
     )
     parser.add_argument(
+        "--pos-reassign-seconds", type=float, default=20.0,
+        help="When a checkout serve loses its track without a clear exit "
+             "(occlusion), hold it this long so a new apparition entering the "
+             "same checkout can adopt it and continue the timer; 0 disables "
+             "(default: 20.0). Applies to the non-Mashgin checkout.",
+    )
+    parser.add_argument(
+        "--pos-reassign-mashgin", dest="pos_reassign_mashgin", action="store_true",
+        help="Also apply occlusion re-assignment to the Mashgin checkout "
+             "(off by default; non-Mashgin only).",
+    )
+    parser.add_argument(
         "--reject-short", action="store_true",
         help="Flag implausibly short visits (likely false detections) as rejected: "
              "kept in the wait log but excluded from the busy signal.",
@@ -535,6 +557,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         wait_min_dwell=args.wait_min_dwell,
         min_wait=args.min_wait,
         wait_log=args.wait_log,
+        pos_reassign_seconds=args.pos_reassign_seconds,
+        pos_reassign_mashgin=args.pos_reassign_mashgin,
         reject_short=args.reject_short,
         reject_floor=args.reject_floor,
         reject_frac=args.reject_frac,

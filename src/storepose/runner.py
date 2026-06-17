@@ -84,6 +84,9 @@ def build_analyzer(config: AppConfig):
         transit_speed=config.transit_speed,
         transit_window=config.transit_window,
         min_wait_seconds=config.min_wait,
+        reassign_seconds=config.pos_reassign_seconds,
+        reassign_checkouts=(("other", "mashgin") if config.pos_reassign_mashgin
+                            else ("other",)),
     )
     return zone, analyzer, pos_zone, alt_zone
 
