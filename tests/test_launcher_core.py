@@ -162,6 +162,23 @@ def test_build_run_save_flag():
     assert args == ["--save-mp4"]
 
 
+def test_toggle_blur_flips_for_any_view():
+    assert toggle_(default_state(V), Column.BLUR).blur is False
+    assert toggle_(default_state(V_NO), Column.BLUR, view=V_NO).blur is False
+
+
+def test_blur_on_by_default_emits_nothing():
+    assert default_state(V).blur is True
+    assert "--no-blur-faces" not in build_run(V, default_state(V))[1]
+
+
+def test_build_run_blur_off_emits_no_blur_faces():
+    s = ColumnState(dashboard=True, debug=False, blur=False, calib=True, strategy="auto")
+    env, args = build_run(V, s)
+    assert env == {}
+    assert args == ["--no-blur-faces"]
+
+
 def test_build_run_alt_off_emits_no_alt():
     s = ColumnState(dashboard=True, debug=False, alt=False, calib=True, strategy="auto")
     env, args = build_run(V, s)

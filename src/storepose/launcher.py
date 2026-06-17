@@ -58,6 +58,8 @@ def _cell(view: View, state, column: Column) -> str:
         return "on" if state.conf else "·"
     if column == Column.SAVE:
         return "on" if state.save else "·"
+    if column == Column.BLUR:
+        return "on" if state.blur else "·"
     if column == Column.ALT:
         return "—" if not view.has_alt else ("on" if state.alt else "·")
     if column == Column.CALIB:

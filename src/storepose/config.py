@@ -28,6 +28,9 @@ class AppConfig:
         save: Optional output path for an annotated .mp4; ``None`` to not save.
         save_mp4: Auto-save the annotated stream to a timestamped file under
             ``runs/`` (no path needed); ``--save`` overrides the auto name.
+        blur_faces: Pixelate each person's face (from face keypoints, else the
+            top quarter of their box) in displayed and saved frames; on by
+            default, disable with ``--no-blur-faces``.
         track: Whether to track people (stable ids, coasting) vs raw per-frame.
         hold_seconds: How long a lost person's box keeps coasting.
         min_hits: Detections before a track is confirmed/drawn.
@@ -88,6 +91,7 @@ class AppConfig:
     show_conf: bool = False
     save: str | None = None
     save_mp4: bool = False
+    blur_faces: bool = True
     track: bool = True
     hold_seconds: float = 1.5
     min_hits: int = 3
@@ -286,6 +290,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--save-mp4", dest="save_mp4", action="store_true",
         help="Auto-save the annotated stream to a timestamped runs/<source>_*.mp4 "
              "(no path needed). --save overrides the auto name if both are given.",
+    )
+    parser.add_argument(
+        "--no-blur-faces", dest="blur_faces", action="store_false",
+        help="Disable face pixelation (on by default; blurs from face "
+             "keypoints, or the top quarter of the box).",
     )
     parser.add_argument(
         "--no-track", dest="track", action="store_false",
@@ -542,6 +551,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         show_conf=args.show_conf,
         save=args.save,
         save_mp4=args.save_mp4,
+        blur_faces=args.blur_faces,
         track=args.track,
         hold_seconds=args.hold_seconds,
         min_hits=args.min_hits,

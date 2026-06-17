@@ -19,6 +19,7 @@ from .dashboard.panel import panel_width, render_panel
 from .dashboard.server import DashboardServer
 from .dashboard.state import DashboardState
 from .drawing import annotate, annotate_busy, annotate_queue, annotate_tracked
+from .faces import blur_faces
 from .fps import FpsMeter
 from .pipeline import PosePipeline
 from .queue.analyzer import QueueAnalyzer
@@ -360,6 +361,14 @@ class Runner:
                                                        next_busy - clock)
                     else:
                         canvas = annotate(frame, result, config, fps)
+
+                    if config.blur_faces:
+                        if tracker is not None:
+                            faces = [(p.box, p.keypoints, p.scores) for p in people]
+                        else:
+                            faces = [(result.boxes[i], result.keypoints[i],
+                                      result.scores[i]) for i in range(result.count)]
+                        blur_faces(canvas, faces, config.kpt_thr)
 
                     if dash_state is not None and analyzer is None:
                         dash_state.observe(clock, 0, 0)  # keep the dashboard ticking

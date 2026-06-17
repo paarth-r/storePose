@@ -44,6 +44,11 @@ def test_transit_window_flag():
     assert from_args(["--transit-window", "2.5"]).transit_window == 2.5
 
 
+def test_blur_faces_flag():
+    assert from_args([]).blur_faces is True
+    assert from_args(["--no-blur-faces"]).blur_faces is False
+
+
 def test_num_mashgins_flag():
     assert from_args([]).num_mashgins == 1
     assert from_args(["--num-mashgins", "4"]).num_mashgins == 4
