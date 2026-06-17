@@ -8,19 +8,21 @@
 # Usage:
 #   ./view-setup.sh -v <video>                  # path, or a bare name found in videos/
 #   ./view-setup.sh -v clip.mp4 --no-calibrate  # skip the calibration pass
+#   ./view-setup.sh -v clip.mp4 --mashgins 2    # number of Mashgin kiosks (default 3)
 #   ./view-setup.sh -v clip.mp4 --no-run --port 8050
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VIDEO="" ; RUN=1 ; PORT=8000 ; CALIBRATE=1
+VIDEO="" ; RUN=1 ; PORT=8000 ; CALIBRATE=1 ; MASHGINS=3
 
-usage(){ sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; }
+usage(){ sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--video)      VIDEO="${2:-}"; shift 2;;
     --no-run)        RUN=0; shift;;
     --no-calibrate)  CALIBRATE=0; shift;;
+    --mashgins)      MASHGINS="${2:-}"; shift 2;;
     --port)          PORT="${2:-}"; shift 2;;
     -h|--help)       usage; exit 0;;
     *) if [[ -z "$VIDEO" ]]; then VIDEO="$1"; shift; else echo "unknown arg: $1" >&2; exit 1; fi;;
@@ -62,8 +64,8 @@ SCRIPT="viewscripts/${STEM}.sh"
   printf 'uv run python main.py --source %q --zone %q' "$VIDEO" "$ZONE"
   [[ -f "$POS" ]] && printf ' --pos-zone %q' "$POS"
   [[ -f "$ALT" ]] && printf ' --alt-zone %q' "$ALT"
-  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q "${EXTRA[@]+"${EXTRA[@]}"}" "$@"\n' \
-         "runs/${STEM}_waits.csv" "runs/${STEM}_busy.csv" "$PORT"
+  printf ' --busy --wait-log %q --busy-log %q --dashboard-port %q --num-mashgins %q "${EXTRA[@]+"${EXTRA[@]}"}" "$@"\n' \
+         "runs/${STEM}_waits.csv" "runs/${STEM}_busy.csv" "$PORT" "$MASHGINS"
 } > "$SCRIPT"
 chmod +x "$SCRIPT"
 echo "==> wrote $SCRIPT"

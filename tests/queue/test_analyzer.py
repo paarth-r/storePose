@@ -610,3 +610,128 @@ def test_checkout_switch_after_sustained_dwell():
     served = [c for c in completed if c.outcome == "served"]
     assert len(served) == 1 and served[0].rejected is False   # Mashgin closed, long enough
     assert r.statuses[0].serving_other is True                # now at the register
+
+
+# --- occlusion-tolerant POS re-assignment (non-Mashgin first) ---------------
+# A wide non-Mashgin zone so "near" vs "far" reappearances are distinguishable.
+ALTW = Zone([(0, 0), (140, 0), (140, 200), (0, 200)])
+
+
+def _serve_then_vanish_other(an, x=30, grace_frames=2):
+    """Drive id 1 to serving_other at ``x`` then let its track vanish past grace."""
+    an.update([alt_person(1, x)], 0.5)
+    an.update([alt_person(1, x)], 0.5)            # serving_other
+    out = []
+    for _ in range(grace_frames):                 # track gone; cross the re-id grace
+        out += an.update([], 0.5).completed
+    return out
+
+
+def test_occlusion_vanish_parks_instead_of_finalizing():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=5.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other",),
+                       transit_speed=0.0)
+    completed = _serve_then_vanish_other(an, grace_frames=2)
+    # crossed the grace window but it's a participating checkout: parked, not closed
+    assert completed == []
+    # still nothing finalized a couple frames later (still within the hold window)
+    assert an.update([], 0.5).completed == []
+    assert an.update([], 0.5).completed == []
+
+
+def test_new_apparition_adopts_parked_visit_and_continues_timer():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other",),
+                       transit_speed=0.0)
+    completed = _serve_then_vanish_other(an, x=30, grace_frames=2)
+    assert completed == []                         # parked
+    an.update([alt_person(2, 30)], 0.5)            # new id, same spot: warming up
+    r = an.update([alt_person(2, 30)], 0.5)        # -> serving: adopts the parked visit
+    assert r.statuses[0].serving_other is True
+    assert r.statuses[0].serving_seconds > 1.0     # carried the occluded serve time
+    # leave -> exactly one served_other, with the summed time
+    completed += an.update([alt_person(2, 400)], 0.5).completed
+    completed += an.update([alt_person(2, 400)], 0.5).completed
+    served_other = [c for c in completed if c.outcome == "served_other"]
+    assert len(served_other) == 1
+    assert served_other[0].serving_seconds > 1.0
+
+
+def test_parked_visit_finalizes_on_hold_timeout():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=5.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=1.0, reassign_checkouts=("other",),
+                       transit_speed=0.0)
+    completed = _serve_then_vanish_other(an, grace_frames=2)
+    assert completed == []                         # parked
+    completed += an.update([], 0.5).completed      # age 0.5 < hold
+    assert completed == []
+    completed += an.update([], 0.5).completed      # age 1.0 >= hold -> finalize
+    assert len(completed) == 1
+    assert completed[0].outcome == "served_other"
+    assert completed[0].serving_seconds > 0
+
+
+def test_clear_walkout_is_not_parked():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1, reid_grace_seconds=5.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other",),
+                       transit_speed=0.0)
+    an.update([alt_person(1, 30)], 0.5)
+    an.update([alt_person(1, 30)], 0.5)            # serving_other
+    an.update([alt_person(1, 400)], 0.5)           # seen stepping out
+    r = an.update([alt_person(1, 400)], 0.5)       # out_streak -> clear exit, finalized
+    assert len(r.completed) == 1 and r.completed[0].outcome == "served_other"
+    # nothing was parked: a fresh apparition starts a clean timer (no carry-over)
+    an.update([alt_person(2, 30)], 0.5)
+    r2 = an.update([alt_person(2, 30)], 0.5)
+    assert r2.statuses[0].serving_other is True
+    assert r2.statuses[0].serving_seconds <= 0.5
+
+
+def test_mashgin_not_parked_by_default():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=5.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other",),
+                       transit_speed=0.0)
+    an.update([alt_person(1, 175)], 0.5)
+    an.update([alt_person(1, 175)], 0.5)           # serving (Mashgin)
+    completed = an.update([], 0.5).completed + an.update([], 0.5).completed
+    assert len(completed) == 1 and completed[0].outcome == "served"  # finalized, not parked
+
+
+def test_mashgin_parks_and_adopts_when_enabled():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=1.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other", "mashgin"),
+                       transit_speed=0.0)
+    an.update([alt_person(1, 175)], 0.5)
+    an.update([alt_person(1, 175)], 0.5)           # serving (Mashgin)
+    parked = an.update([], 0.5).completed + an.update([], 0.5).completed
+    assert parked == []                            # parked, not finalized
+    an.update([alt_person(2, 175)], 0.5)
+    r = an.update([alt_person(2, 175)], 0.5)       # adopts the parked Mashgin visit
+    assert r.statuses[0].serving is True
+    assert r.statuses[0].serving_seconds > 1.0
+
+
+def test_spatial_gate_rejects_far_apparition():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALTW, enter_frames=2,
+                       exit_seconds=5.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=5.0, reassign_checkouts=("other",),
+                       reassign_radius_frac=1.5, transit_speed=0.0)
+    _serve_then_vanish_other(an, x=30, grace_frames=2)   # parked near x=30
+    an.update([alt_person(2, 110)], 0.5)                 # appears far away (dist 80 > ~67)
+    r = an.update([alt_person(2, 110)], 0.5)             # serving, but NOT adopting
+    assert r.statuses[0].serving_other is True
+    assert r.statuses[0].serving_seconds <= 0.5          # fresh timer, no carry-over
+
+
+def test_reassign_disabled_finalizes_like_before():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=5.0, pos_enter_frames=1, reid_grace_seconds=1.0,
+                       reassign_seconds=0.0, transit_speed=0.0)
+    completed = _serve_then_vanish_other(an, grace_frames=2)
+    assert len(completed) == 1 and completed[0].outcome == "served_other"

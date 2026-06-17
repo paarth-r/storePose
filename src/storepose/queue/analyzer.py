@@ -25,8 +25,33 @@ class _VisitState:
     pos_frames: int = 0           # consecutive in-POS frames (waiting -> serving debounce)
     switch_seconds: float = 0.0   # dwell at the *other* checkout (switch debounce)
     absent_seconds: float = 0.0   # time the track has been gone (re-id grace)
+    # last present box center + diagonal, used to gate occlusion re-assignment
+    last_cx: float = 0.0
+    last_cy: float = 0.0
+    last_diag: float = 1.0
     # trailing (t, cx, cy) box centers for the windowed-displacement transit filter
     centers: deque = field(default_factory=deque)
+
+
+@dataclass
+class _ParkedVisit:
+    """A serve whose track vanished under occlusion without a clear exit.
+
+    Held out of the live state so a later apparition entering the same checkout
+    can adopt it and continue the timer (see :class:`QueueAnalyzer`). Keeps
+    accruing serving time while parked, and finalizes if the hold window lapses
+    with no adoption.
+    """
+
+    id: int
+    checkout: str
+    waiting_seconds: float
+    serving_seconds: float
+    entered_s: float
+    cx: float
+    cy: float
+    diag: float
+    age: float = 0.0
 
 
 class QueueAnalyzer:
@@ -59,6 +84,9 @@ class QueueAnalyzer:
         transit_speed: float = 0.4,
         transit_window: float = 1.0,
         min_wait_seconds: float = 0.0,
+        reassign_seconds: float = 0.0,
+        reassign_checkouts: tuple[str, ...] = (),
+        reassign_radius_frac: float = 1.5,
     ):
         self.zone = zone
         self.pos_zone = pos_zone
@@ -77,7 +105,15 @@ class QueueAnalyzer:
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
         self.foot_band = foot_band
+        # Occlusion re-assignment: when a serve at a participating checkout loses
+        # its track without a clear exit, park it for up to reassign_seconds and
+        # let the next apparition within reassign_radius_frac box-diagonals adopt
+        # it. 0 seconds (or an empty checkout set) disables the feature.
+        self.reassign_seconds = max(0.0, reassign_seconds)
+        self.reassign_checkouts = set(reassign_checkouts)
+        self.reassign_radius_frac = max(0.0, reassign_radius_frac)
         self._states: dict[int, _VisitState] = {}
+        self._parked: list[_ParkedVisit] = []
         self._clock = 0.0
 
     def _foot_box(self, box) -> tuple[float, float, float, float]:
@@ -112,28 +148,82 @@ class QueueAnalyzer:
                     return True
         return zone.coverage(self._foot_box(person.box)) >= self.coverage_thr
 
-    def _finalize(self, pid: int, st: _VisitState, completed: list) -> None:
+    def _outcome(self, checkout: str | None) -> str:
         # With no checkout zone there is no abandonment concept: a finished wait
         # is simply "served" (preserves single-zone busy/throughput behavior).
         no_checkout = self.pos_zone is None and self.alt_zone is None
-        if st.checkout == "mashgin" or no_checkout:
-            outcome = "served"
-        elif st.checkout == "other":
-            outcome = "served_other"
-        else:
-            outcome = "abandoned"
+        if checkout == "mashgin" or no_checkout:
+            return "served"
+        if checkout == "other":
+            return "served_other"
+        return "abandoned"
+
+    def _emit(self, pid: int, entered_s: float, waiting_seconds: float,
+              serving_seconds: float, checkout: str | None, completed: list) -> None:
+        outcome = self._outcome(checkout)
         # Judge the outcome-relevant time: a served visit on its at-checkout time,
         # an abandoned one on its line time. Below the floor it is a phantom /
         # walk-by — flagged rejected (kept in the wait log, dropped everywhere else).
-        relevant = (st.serving_seconds if outcome in ("served", "served_other")
-                    else st.waiting_seconds)
+        relevant = (serving_seconds if outcome in ("served", "served_other")
+                    else waiting_seconds)
         rejected = self.min_wait_seconds > 0.0 and relevant < self.min_wait_seconds
         completed.append(
-            CompletedWait(
-                pid, st.entered_s, self._clock, st.waiting_seconds,
-                st.serving_seconds, outcome, rejected,
+            CompletedWait(pid, entered_s, self._clock, waiting_seconds,
+                          serving_seconds, outcome, rejected)
+        )
+
+    def _finalize(self, pid: int, st: _VisitState, completed: list) -> None:
+        self._emit(pid, st.entered_s, st.waiting_seconds, st.serving_seconds,
+                   st.checkout, completed)
+
+    def _reassign_on(self, checkout: str | None) -> bool:
+        """Whether occlusion re-assignment is active for ``checkout``."""
+        return self.reassign_seconds > 0.0 and checkout in self.reassign_checkouts
+
+    def _park(self, pid: int, st: _VisitState) -> None:
+        """Hold a vanished serve for possible adoption instead of finalizing it."""
+        self._parked.append(
+            _ParkedVisit(
+                id=pid, checkout=st.checkout, waiting_seconds=st.waiting_seconds,
+                serving_seconds=st.serving_seconds, entered_s=st.entered_s,
+                cx=st.last_cx, cy=st.last_cy, diag=st.last_diag,
             )
         )
+
+    def _age_parked(self, dt: float, completed: list) -> None:
+        """Advance every parked visit's hold (and its timer); finalize on lapse."""
+        for p in list(self._parked):
+            p.age += dt
+            p.serving_seconds += dt          # continued timer while occluded
+            if p.age >= self.reassign_seconds:
+                self._emit(p.id, p.entered_s, p.waiting_seconds, p.serving_seconds,
+                           p.checkout, completed)
+                self._parked.remove(p)
+
+    def _try_adopt(self, st: _VisitState, checkout: str, cx: float, cy: float) -> bool:
+        """Adopt the nearest in-window parked visit for ``checkout`` into ``st``.
+
+        Gate: same checkout, hold not lapsed, and the new center within
+        ``reassign_radius_frac`` of the parked person's last box diagonal. The
+        adopted serving/waiting time carries over and the timer continues.
+        """
+        if not self._reassign_on(checkout):
+            return False
+        best: _ParkedVisit | None = None
+        best_d = float("inf")
+        for p in self._parked:
+            if p.checkout != checkout or p.age >= self.reassign_seconds:
+                continue
+            d = ((cx - p.cx) ** 2 + (cy - p.cy) ** 2) ** 0.5
+            if d <= self.reassign_radius_frac * p.diag and d < best_d:
+                best, best_d = p, d
+        if best is None:
+            return False
+        st.serving_seconds += best.serving_seconds
+        st.waiting_seconds += best.waiting_seconds
+        st.entered_s = best.entered_s
+        self._parked.remove(best)
+        return True
 
     def _status(self, pid: int, st: _VisitState) -> PersonStatus:
         waiting = st.state == "waiting"
@@ -156,6 +246,10 @@ class QueueAnalyzer:
         statuses: list[PersonStatus] = []
         completed: list[CompletedWait] = []
 
+        # advance parked (occluded) serves and finalize any whose hold has lapsed
+        if self._parked:
+            self._age_parked(dt, completed)
+
         for person in people:
             present.add(person.id)
             st = self._states.setdefault(person.id, _VisitState())
@@ -170,7 +264,11 @@ class QueueAnalyzer:
             box = person.box
             cx = (float(box[0]) + float(box[2])) / 2.0
             cy = (float(box[1]) + float(box[3])) / 2.0
+            box_w = float(box[2]) - float(box[0])
             box_h = max(1.0, float(box[3]) - float(box[1]))
+            # remember the last seen center/size to gate occlusion re-assignment
+            st.last_cx, st.last_cy = cx, cy
+            st.last_diag = max(1.0, (box_w ** 2 + box_h ** 2) ** 0.5)
             if returned:
                 st.centers.clear()  # don't read the re-id gap as a displacement spike
             st.centers.append((self._clock, cx, cy))
@@ -236,6 +334,7 @@ class QueueAnalyzer:
                         st.state = "serving"
                         st.checkout = which
                         st.pos_frames = 0
+                        self._try_adopt(st, which, cx, cy)
                 elif in_line:
                     st.out_streak = 0.0
                     st.pos_frames = 0
@@ -259,6 +358,7 @@ class QueueAnalyzer:
                         if in_check:
                             st.state = "serving"
                             st.checkout = which
+                            self._try_adopt(st, which, cx, cy)
                         else:
                             st.state = "waiting"
                 else:
@@ -286,7 +386,12 @@ class QueueAnalyzer:
             st.absent_seconds += dt
             if st.absent_seconds >= self.reid_grace_seconds:
                 self._states.pop(pid)
-                if st.state in ("waiting", "serving"):
+                # A serve at a participating checkout that vanished without a clear
+                # exit is occluded, not gone: park it for possible re-assignment
+                # instead of finalizing. Everything else finalizes as before.
+                if st.state == "serving" and self._reassign_on(st.checkout):
+                    self._park(pid, st)
+                elif st.state in ("waiting", "serving"):
                     self._finalize(pid, st, completed)
             elif st.state == "waiting":
                 st.waiting_seconds += dt

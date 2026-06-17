@@ -27,7 +27,8 @@ def _make_handler(state: DashboardState):
                 self._send(PAGE_HTML.encode("utf-8"), "text/html; charset=utf-8")
             elif self.path.startswith("/metrics"):
                 payload = metrics.build_payload(
-                    state.snapshot(), state.busy_snapshot(), state.debug_snapshot())
+                    state.snapshot(), state.busy_snapshot(), state.debug_snapshot(),
+                    num_mashgins=state.num_mashgins)
                 body = json.dumps(payload).encode("utf-8")
                 self._send(body, "application/json")
             else:

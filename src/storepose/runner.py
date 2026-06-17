@@ -84,6 +84,9 @@ def build_analyzer(config: AppConfig):
         transit_speed=config.transit_speed,
         transit_window=config.transit_window,
         min_wait_seconds=config.min_wait,
+        reassign_seconds=config.pos_reassign_seconds,
+        reassign_checkouts=(("other", "mashgin") if config.pos_reassign_mashgin
+                            else ("other",)),
     )
     return zone, analyzer, pos_zone, alt_zone
 
@@ -279,6 +282,7 @@ class Runner:
                 dash_state = None
                 if config.dashboard or sink is not None:
                     dash_state = DashboardState()
+                    dash_state.num_mashgins = config.num_mashgins
                 if config.dashboard:
                     dash_server = DashboardServer(dash_state, port=config.dashboard_port)
                     dash_server.start()

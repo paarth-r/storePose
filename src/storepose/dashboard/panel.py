@@ -50,7 +50,7 @@ def panel_data(dash_state, show_alt: bool = False) -> PanelData:
     return PanelData(
         busy=busy_current,
         summary=metrics.summary_stats(occ, visits),
-        checkouts=metrics.checkout_stats(visits),
+        checkouts=metrics.checkout_stats(visits, getattr(dash_state, "num_mashgins", 1)),
         occ=occ,
         show_alt=show_alt,
     )
@@ -142,8 +142,11 @@ def render_panel(width: int, height: int, data: PanelData) -> np.ndarray:
     if data.show_alt and (ck["mashgin_n"] or ck["other_n"]):
         y += round(8 * s)
         cv2.line(img, (m, y - round(14 * s)), (rx, y - round(14 * s)), _HAIR, 1)
-        _put(img, "MASHGIN", (m, y), 0.44 * s, _BRAND, 1)
-        _put_right(img, f"{ck['mashgin_avg']:.1f}s", rx, y, 0.5 * s, _INK, 1)
+        m_eff = ck.get("mashgin_avg_eff", ck["mashgin_avg"])
+        n_kiosks = ck.get("num_mashgins", 1)
+        mash_label = f"MASHGIN x{n_kiosks}" if n_kiosks > 1 else "MASHGIN"
+        _put(img, mash_label, (m, y), 0.44 * s, _BRAND, 1)
+        _put_right(img, f"{m_eff:.1f}s", rx, y, 0.5 * s, _INK, 1)
         y += round(22 * s)
         _put(img, "STAFFED", (m, y), 0.44 * s, _MUTED, 1)
         _put_right(img, f"{ck['other_avg']:.1f}s", rx, y, 0.5 * s, _INK, 1)
