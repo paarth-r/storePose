@@ -201,7 +201,7 @@ table.dbg-t tr:hover td{background:#161e2e}
   </div>
   <div class="vs">
     <div class="vs-side mash"><div class="who">Mashgin self-checkout</div>
-      <div class="v" id="vsM">—</div><div class="sub">avg time at the register</div></div>
+      <div class="v" id="vsM">—</div><div class="sub" id="vsMSub">avg time at the register</div></div>
     <div class="vs-mid"><div class="mult" id="vsMult">—</div><div class="sub">faster</div>
       <div class="sub" id="vsDelta" style="text-transform:none;letter-spacing:0;font-weight:500;margin-top:5px"></div></div>
     <div class="vs-side staff"><div class="who">Staffed lane</div>
@@ -392,9 +392,14 @@ async function poll(){
 
     const ck=d.checkouts, vs=document.getElementById("vs");
     if(ck && ck.other_n>0){vs.hidden=false;
-      document.getElementById("vsM").textContent=dur(ck.mashgin_avg);
+      // effective per-customer Mashgin time across N parallel kiosks
+      const mEff=(ck.mashgin_avg_eff!=null)?ck.mashgin_avg_eff:ck.mashgin_avg;
+      document.getElementById("vsM").textContent=dur(mEff);
       document.getElementById("vsO").textContent=dur(ck.other_avg);
-      const mult=(ck.mashgin_avg>0)?(ck.other_avg/ck.mashgin_avg):null;
+      const n=ck.num_mashgins||1;
+      document.getElementById("vsMSub").textContent=
+        n>1?`across ${n} kiosks (${dur(ck.mashgin_avg)}/person)`:"avg time at the register";
+      const mult=(mEff>0)?(ck.other_avg/mEff):null;
       document.getElementById("vsMult").textContent=mult?mult.toFixed(1)+"×":"—";
       document.getElementById("vsDelta").textContent=
         ck.delta>0?`saves ${dur(ck.delta)} / person`:"";}

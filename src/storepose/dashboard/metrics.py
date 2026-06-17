@@ -87,8 +87,17 @@ def busy_series(current, history: list) -> dict:
     }
 
 
-def checkout_stats(visits: list) -> dict:
-    """Avg serve time per person at the Mashgin vs non-Mashgin checkout + delta."""
+def checkout_stats(visits: list, num_mashgins: int = 1) -> dict:
+    """Avg serve time per person at the Mashgin vs non-Mashgin checkout + delta.
+
+    ``num_mashgins`` is how many Mashgin self-checkout kiosks run in parallel:
+    they process people simultaneously, so the *effective* per-customer time of
+    the Mashgin system is the measured per-person serve time divided by the kiosk
+    count. ``mashgin_avg_eff`` is that effective figure and the ``delta`` (seconds
+    saved per person vs the staffed lane) is computed from it. ``mashgin_avg``
+    stays the raw per-person measurement.
+    """
+    n = max(1, num_mashgins)
     mash = [v for v in visits if v.outcome == "served"]
     other = [v for v in visits if v.outcome == "served_other"]
 
@@ -96,10 +105,12 @@ def checkout_stats(visits: list) -> dict:
         return sum(v.serving_seconds for v in vs) / len(vs) if vs else 0.0
 
     m_avg, o_avg = avg(mash), avg(other)
+    m_eff = m_avg / n
     return {
-        "mashgin_avg": m_avg, "mashgin_n": len(mash),
+        "mashgin_avg": m_avg, "mashgin_avg_eff": m_eff, "num_mashgins": n,
+        "mashgin_n": len(mash),
         "other_avg": o_avg, "other_n": len(other),
-        "delta": o_avg - m_avg,  # seconds the Mashgin checkout saves per person
+        "delta": o_avg - m_eff,  # seconds the Mashgin system saves per person
     }
 
 
@@ -117,12 +128,12 @@ def checkout_series(visits: list, window: float = 120.0) -> dict:
 
 
 def build_payload(snapshot: tuple[list, list], busy: tuple = (None, []),
-                  debug: tuple = (None, [])) -> dict:
+                  debug: tuple = (None, []), num_mashgins: int = 1) -> dict:
     occ, visits = snapshot
     busy_current, busy_history = busy
     debug_frame, debug_rows = debug
     now = occ[-1][0] if occ else 0.0
-    checkouts = checkout_stats(visits)
+    checkouts = checkout_stats(visits, num_mashgins)
     checkouts["series"] = checkout_series(visits)
     return {
         "now": now,

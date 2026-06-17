@@ -282,6 +282,7 @@ class Runner:
                 dash_state = None
                 if config.dashboard or sink is not None:
                     dash_state = DashboardState()
+                    dash_state.num_mashgins = config.num_mashgins
                 if config.dashboard:
                     dash_server = DashboardServer(dash_state, port=config.dashboard_port)
                     dash_server.start()

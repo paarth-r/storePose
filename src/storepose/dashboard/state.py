@@ -28,6 +28,7 @@ class DashboardState:
         self._last_occ_t: float | None = None
         self._debug_frame: int | None = None       # frame index being viewed
         self._debug_rows: list = []                 # per-person reasoning rows
+        self.num_mashgins: int = 1                  # parallel Mashgin kiosks (display)
 
     def observe(self, t: float, waiting: int, serving: int) -> None:
         with self._lock:

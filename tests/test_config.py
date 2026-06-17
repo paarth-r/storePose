@@ -44,6 +44,11 @@ def test_transit_window_flag():
     assert from_args(["--transit-window", "2.5"]).transit_window == 2.5
 
 
+def test_num_mashgins_flag():
+    assert from_args([]).num_mashgins == 1
+    assert from_args(["--num-mashgins", "4"]).num_mashgins == 4
+
+
 def test_pos_reassign_flags():
     d = from_args([])
     assert (d.pos_reassign_seconds, d.pos_reassign_mashgin) == (20.0, False)
@@ -65,6 +70,7 @@ def test_pos_reassign_flags():
         {"transit_window": 0},
         {"reject_floor": -1.0},
         {"pos_reassign_seconds": -1.0},
+        {"num_mashgins": 0},
         {"reject_frac": 1.5},
         {"reject_warmup": -1},
     ],

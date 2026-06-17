@@ -71,6 +71,9 @@ class AppConfig:
         busy_hysteresis: Cross-window deadband to suppress label flapping.
         dashboard: Serve the live web dashboard during the run.
         dashboard_port: Port for the dashboard HTTP server.
+        num_mashgins: Count of parallel Mashgin self-checkout kiosks; the
+            dashboard divides the Mashgin time and the vs-staffed comparison by
+            it to reflect parallel throughput.
         debug: Step through frames one at a time (scrub a rolling buffer) and push
             per-person reasoning rows to the dashboard Debug tab.
     """
@@ -132,6 +135,7 @@ class AppConfig:
     busy_strategy: str | None = None  # None => use the calib file's auto default
     dashboard: bool = True
     dashboard_port: int = 8000
+    num_mashgins: int = 1
     debug: bool = False
     calibrate: bool = False
     verbose: bool = False
@@ -207,6 +211,8 @@ class AppConfig:
             )
         if not 1 <= self.dashboard_port <= 65535:
             raise ValueError(f"dashboard_port must be in [1, 65535], got {self.dashboard_port}")
+        if self.num_mashgins < 1:
+            raise ValueError(f"num_mashgins must be >= 1, got {self.num_mashgins}")
 
 
 def parse_source(value: str | int) -> int | str:
@@ -498,6 +504,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Port for the live dashboard HTTP server (default: 8000).",
     )
     parser.add_argument(
+        "--num-mashgins", type=int, default=1,
+        help="Number of Mashgin self-checkout kiosks running in parallel. The "
+             "dashboard divides the Mashgin self-checkout time (and the "
+             "vs-staffed comparison) by this to reflect parallel throughput "
+             "(default: 1).",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="Frame-by-frame step mode: scrub a rolling buffer and read each "
              "person's classification in the dashboard Debug tab.",
@@ -576,6 +589,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         busy_strategy=args.busy_strategy,
         dashboard=args.dashboard,
         dashboard_port=args.dashboard_port,
+        num_mashgins=args.num_mashgins,
         debug=args.debug,
         calibrate=args.calibrate,
         verbose=args.verbose,
