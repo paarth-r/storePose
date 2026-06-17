@@ -30,6 +30,23 @@ _ZONES = "zones"
 
 _FLAG_W = 7        # width of each flag cell
 _NAME_W_MAX = 34   # cap on the view-name column
+_ARROW_W = 2       # left/right margin reserved for the ‹ › scroll arrows
+
+
+def _col_window(col: int, col_off: int, n_cols: int, max_visible: int) -> int:
+    """Return an updated first-visible-column index keeping ``col`` on screen.
+
+    Pure horizontal-scroll math (no curses) so it is unit-testable: clamps the
+    window to ``[0, n_cols - max_visible]`` and slides it just far enough that
+    the selected ``col`` stays within ``[col_off, col_off + max_visible)``.
+    """
+    if max_visible <= 0 or max_visible >= n_cols:
+        return 0
+    if col < col_off:
+        col_off = col
+    elif col >= col_off + max_visible:
+        col_off = col - max_visible + 1
+    return max(0, min(col_off, n_cols - max_visible))
 
 
 def _cell(view: View, state, column: Column) -> str:
@@ -57,15 +74,22 @@ def _safe_add(stdscr, y: int, x: int, text: str, attr: int = 0) -> None:
         pass  # off-screen / too-small terminal: skip rather than crash
 
 
-def _draw(stdscr, views, states, row, col, name_w) -> None:
+def _draw(stdscr, views, states, row, col, name_w, col_off, max_visible) -> None:
     _safe_add(stdscr, 0, 0, "storePose — pick a view, toggle columns, Enter to run",
               curses.A_BOLD)
-    # header
     hx = 2 + name_w
+    n_cols = len(COLUMNS)
+    end = min(n_cols, col_off + max_visible)        # visible window [col_off, end)
+    arrow_x = hx + (end - col_off) * _FLAG_W         # just past the last visible cell
+    # header (only the visible column slice)
     _safe_add(stdscr, 2, 2, "view".ljust(name_w), curses.A_UNDERLINE)
-    for i, c in enumerate(COLUMNS):
-        _safe_add(stdscr, 2, hx + i * _FLAG_W,
-                  COLUMN_LABELS[c].center(_FLAG_W), curses.A_UNDERLINE)
+    if col_off > 0:
+        _safe_add(stdscr, 2, hx - 1, "‹", curses.A_BOLD)
+    for vis, i in enumerate(range(col_off, end)):
+        _safe_add(stdscr, 2, hx + vis * _FLAG_W,
+                  COLUMN_LABELS[COLUMNS[i]].center(_FLAG_W), curses.A_UNDERLINE)
+    if end < n_cols:
+        _safe_add(stdscr, 2, arrow_x, "›", curses.A_BOLD)
     # rows
     for r, view in enumerate(views):
         y = 3 + r
@@ -73,15 +97,19 @@ def _draw(stdscr, views, states, row, col, name_w) -> None:
         marker = "> " if r == row else "  "
         _safe_add(stdscr, y, 0, marker + view.stem[:name_w].ljust(name_w),
                   curses.A_BOLD if r == row else 0)
-        for i, c in enumerate(COLUMNS):
-            cx = hx + i * _FLAG_W
+        for vis, i in enumerate(range(col_off, end)):
+            cx = hx + vis * _FLAG_W
             attr = curses.A_REVERSE if (r == row and i == col) else 0
-            _safe_add(stdscr, y, cx, _cell(view, st, c).center(_FLAG_W), attr)
+            _safe_add(stdscr, y, cx, _cell(view, st, COLUMNS[i]).center(_FLAG_W), attr)
     # footer
     fy = 4 + len(views)
     _safe_add(stdscr, fy, 0,
               "↑/↓ view   ←/→ column   space toggle   enter run   q quit",
               curses.A_DIM)
+    if end - col_off < n_cols:                       # only when some columns are hidden
+        _safe_add(stdscr, fy + 1, 0,
+                  f"columns {col_off + 1}–{end} of {n_cols}  (‹ › scroll)",
+                  curses.A_DIM)
 
 
 def _run_ui(stdscr, views):
@@ -89,9 +117,15 @@ def _run_ui(stdscr, views):
     states = {v.stem: default_state(v) for v in views}
     name_w = min(_NAME_W_MAX, max((len(v.stem) for v in views), default=4))
     row, col = 0, 0
+    col_off = 0
     while True:
+        _, width = stdscr.getmaxyx()
+        hx = 2 + name_w
+        # columns that fit, leaving room for the ‹ › scroll arrows; >= 1
+        max_visible = max(1, (width - hx - _ARROW_W) // _FLAG_W)
+        col_off = _col_window(col, col_off, len(COLUMNS), max_visible)
         stdscr.erase()
-        _draw(stdscr, views, states, row, col, name_w)
+        _draw(stdscr, views, states, row, col, name_w, col_off, max_visible)
         stdscr.refresh()
         key = stdscr.getch()
         if key in (ord("q"), 27):
