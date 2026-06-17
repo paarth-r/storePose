@@ -24,5 +24,9 @@ run.sh
 viewscripts/
 runs/
 
+# Default-named run outputs at the repo root (run.sh / --wait-log / --busy-log)
+waits.csv
+busy.csv
+
 # Per-camera generated busy calibration (tied to gitignored videos/, like zones/)
 calib/
