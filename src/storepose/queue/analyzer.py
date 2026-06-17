@@ -23,6 +23,7 @@ class _VisitState:
     in_seconds: float = 0.0
     out_streak: float = 0.0
     pos_frames: int = 0           # consecutive in-POS frames (waiting -> serving debounce)
+    switch_seconds: float = 0.0   # dwell at the *other* checkout (switch debounce)
     absent_seconds: float = 0.0   # time the track has been gone (re-id grace)
     # trailing (t, cx, cy) box centers for the windowed-displacement transit filter
     centers: deque = field(default_factory=deque)
@@ -57,6 +58,7 @@ class QueueAnalyzer:
         pos_enter_frames: int = 3,
         transit_speed: float = 0.4,
         transit_window: float = 1.0,
+        min_wait_seconds: float = 0.0,
     ):
         self.zone = zone
         self.pos_zone = pos_zone
@@ -67,6 +69,10 @@ class QueueAnalyzer:
         self.pos_enter_frames = max(1, pos_enter_frames)
         self.exit_seconds = exit_seconds
         self.min_dwell_seconds = max(0.0, min_dwell_seconds)
+        # Outcome-relevant time below this marks a visit rejected (phantom/walk-by,
+        # excluded from averages/charts/busy) and is also the dwell a person must
+        # sustain at the *other* checkout before a checkout switch is accepted.
+        self.min_wait_seconds = max(0.0, min_wait_seconds)
         self.reid_grace_seconds = max(0.0, reid_grace_seconds)
         self.kpt_thr = kpt_thr
         self.coverage_thr = coverage_thr
@@ -116,10 +122,16 @@ class QueueAnalyzer:
             outcome = "served_other"
         else:
             outcome = "abandoned"
+        # Judge the outcome-relevant time: a served visit on its at-checkout time,
+        # an abandoned one on its line time. Below the floor it is a phantom /
+        # walk-by — flagged rejected (kept in the wait log, dropped everywhere else).
+        relevant = (st.serving_seconds if outcome in ("served", "served_other")
+                    else st.waiting_seconds)
+        rejected = self.min_wait_seconds > 0.0 and relevant < self.min_wait_seconds
         completed.append(
             CompletedWait(
                 pid, st.entered_s, self._clock, st.waiting_seconds,
-                st.serving_seconds, outcome,
+                st.serving_seconds, outcome, rejected,
             )
         )
 
@@ -186,30 +198,35 @@ class QueueAnalyzer:
                    "line": in_line, "pos": in_pos, "reg": in_alt}
 
             if st.state == "serving":
-                st.serving_seconds += dt
-                if in_check:
+                if in_check and which != st.checkout:
+                    # Heading to the *other* checkout. Don't credit this ambiguous
+                    # transition time to the checkout being left, and don't switch
+                    # until the other checkout is sustained for min_wait_seconds, so
+                    # a brief box-clip into an adjacent zone can't truncate this
+                    # serve or mint a phantom one. A fresh timer starts on switch.
                     st.out_streak = 0.0
-                    if which == st.checkout:
-                        st.pos_frames = 0
-                    else:
-                        # moved toward the *other* checkout: once it's sustained,
-                        # close out this visit and start a fresh timer there (the
-                        # serving timer must not persist across checkouts).
-                        st.pos_frames += 1
-                        if st.pos_frames >= self.pos_enter_frames:
-                            self._finalize(person.id, st, completed)
-                            st.serving_seconds = 0.0
-                            st.waiting_seconds = 0.0
-                            st.entered_s = self._clock
-                            st.checkout = which
-                            st.pos_frames = 0
-                else:
-                    st.out_streak += dt
-                    if st.out_streak >= self.exit_seconds:
+                    st.switch_seconds += dt
+                    if st.switch_seconds >= self.min_wait_seconds:
                         self._finalize(person.id, st, completed)
-                        self._states.pop(person.id)
-                        statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0, debug=dbg))
-                        continue
+                        st.serving_seconds = 0.0
+                        st.waiting_seconds = 0.0
+                        st.entered_s = self._clock
+                        st.checkout = which
+                        st.switch_seconds = 0.0
+                        st.pos_frames = 0
+                else:
+                    st.switch_seconds = 0.0
+                    st.serving_seconds += dt
+                    if in_check:                 # still the same checkout
+                        st.out_streak = 0.0
+                        st.pos_frames = 0
+                    else:                        # out of every checkout
+                        st.out_streak += dt
+                        if st.out_streak >= self.exit_seconds:
+                            self._finalize(person.id, st, completed)
+                            self._states.pop(person.id)
+                            statuses.append(PersonStatus(person.id, False, False, 0.0, 0.0, debug=dbg))
+                            continue
             elif st.state == "waiting":
                 st.waiting_seconds += dt
                 if in_check:

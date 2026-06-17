@@ -530,3 +530,83 @@ def test_status_debug_populated():
     assert d is not None
     assert set(d) == {"speed", "transit", "line", "pos", "reg"}
     assert d["transit"] is True and d["line"] is False
+
+
+# --- min-wait floor: drop phantom/walk-by visits below the outcome-relevant time ---
+
+def test_min_wait_rejects_short_served():
+    # A served visit whose at-POS time is under the floor is flagged rejected.
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=1, exit_seconds=1.0,
+                       pos_enter_frames=1, transit_speed=0.0, min_wait_seconds=5.0)
+    an.update([pos_person(1, 160)], 0.5)             # straight to POS -> serving
+    an.update([pos_person(1, 160)], 0.5)             # brief serve
+    an.update([pos_person(1, 400)], 0.5)             # leaving
+    r = an.update([pos_person(1, 400)], 0.5)         # exit -> finalize
+    c = r.completed[0]
+    assert c.outcome == "served" and c.serving_seconds < 5.0
+    assert c.rejected is True
+
+
+def test_min_wait_keeps_long_served():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=1, exit_seconds=1.0,
+                       pos_enter_frames=1, transit_speed=0.0, min_wait_seconds=5.0)
+    an.update([pos_person(1, 160)], 0.5)             # serving
+    for _ in range(12):                              # ~6s at POS
+        an.update([pos_person(1, 160)], 0.5)
+    an.update([pos_person(1, 400)], 0.5)
+    r = an.update([pos_person(1, 400)], 0.5)
+    c = r.completed[0]
+    assert c.serving_seconds >= 5.0 and c.rejected is False
+
+
+def test_min_wait_rejects_short_abandoned():
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=1, exit_seconds=1.0,
+                       transit_speed=0.0, min_wait_seconds=5.0)
+    an.update([pos_person(1, 40)], 0.5)              # in line -> waiting
+    an.update([pos_person(1, 40)], 0.5)              # brief wait
+    an.update([pos_person(1, 400)], 0.5)             # leaving
+    r = an.update([pos_person(1, 400)], 0.5)         # exit -> abandoned
+    c = r.completed[0]
+    assert c.outcome == "abandoned" and c.wait_seconds < 5.0
+    assert c.rejected is True
+
+
+def test_min_wait_default_off_keeps_short_visits():
+    # Default (0) preserves prior behavior: short visits are not flagged.
+    an = QueueAnalyzer(ZONE, pos_zone=POS, enter_frames=1, exit_seconds=1.0,
+                       pos_enter_frames=1, transit_speed=0.0)
+    an.update([pos_person(1, 160)], 0.5)
+    an.update([pos_person(1, 160)], 0.5)
+    an.update([pos_person(1, 400)], 0.5)
+    r = an.update([pos_person(1, 400)], 0.5)
+    assert r.completed[0].rejected is False
+
+
+def test_checkout_switch_needs_sustained_dwell_no_instant_transition():
+    # A single frame clipping the other checkout (<< min_wait) must NOT finalize
+    # the current Mashgin serve or flip the checkout — no instant transition.
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=5.0, transit_speed=0.0, min_wait_seconds=5.0)
+    completed = []
+    for _ in range(6):                               # served at Mashgin a while
+        completed += an.update([alt_person(1, 175)], 0.5).completed
+    completed += an.update([alt_person(1, 30)], 0.5).completed   # brief clip (0.5s)
+    assert completed == []                           # no premature finalize/switch
+    r = an.update([alt_person(1, 175)], 0.5)         # back at Mashgin
+    assert r.statuses[0].serving is True and r.statuses[0].serving_other is False
+    assert not r.completed
+
+
+def test_checkout_switch_after_sustained_dwell():
+    an = QueueAnalyzer(ZONE, pos_zone=MPOS, alt_zone=ALT, enter_frames=2,
+                       exit_seconds=10.0, transit_speed=0.0, min_wait_seconds=2.0)
+    completed = []
+    for _ in range(8):                               # ~3s served at Mashgin
+        completed += an.update([alt_person(1, 175)], 0.5).completed
+    r = None
+    for _ in range(5):                               # 2.5s sustained at non-Mashgin
+        r = an.update([alt_person(1, 30)], 0.5)
+        completed += r.completed
+    served = [c for c in completed if c.outcome == "served"]
+    assert len(served) == 1 and served[0].rejected is False   # Mashgin closed, long enough
+    assert r.statuses[0].serving_other is True                # now at the register

@@ -83,7 +83,7 @@ class AppConfig:
     iou_thr: float = 0.3
     max_overlap: float = 0.5
     reid: bool = True
-    reid_seconds: float = 5.0
+    reid_seconds: float = 10.0
     reid_thr: float = 0.6
     smooth: bool = True
     smooth_cutoff: float = 1.0
@@ -94,6 +94,7 @@ class AppConfig:
     define_pos_zone: bool = False
     alt_zone: str | None = None
     define_alt_zone: bool = False
+    no_alt: bool = False
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
     transit_speed: float = 0.4
@@ -102,6 +103,7 @@ class AppConfig:
     zone_coverage: float = 0.5
     zone_foot_band: float = 0.3
     wait_min_dwell: float = 0.0
+    min_wait: float = 5.0
     wait_log: str | None = None
     reject_short: bool = False
     reject_floor: float = 2.0
@@ -165,6 +167,8 @@ class AppConfig:
             raise ValueError(f"zone_foot_band must be in (0, 1], got {self.zone_foot_band}")
         if self.wait_min_dwell < 0:
             raise ValueError(f"wait_min_dwell must be >= 0, got {self.wait_min_dwell}")
+        if self.min_wait < 0:
+            raise ValueError(f"min_wait must be >= 0, got {self.min_wait}")
         if self.reject_floor < 0:
             raise ValueError(f"reject_floor must be >= 0, got {self.reject_floor}")
         if not 0.0 <= self.reject_frac <= 1.0:
@@ -285,8 +289,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable appearance re-id (re-attaching a returning person's id).",
     )
     parser.add_argument(
-        "--reid-seconds", type=float, default=5.0,
-        help="How long a lost track stays re-attachable, in seconds (default: 5.0).",
+        "--reid-seconds", type=float, default=10.0,
+        help="How long a lost track stays re-attachable, in seconds (default: 10.0).",
     )
     parser.add_argument(
         "--reid-thr", type=float, default=0.6,
@@ -329,6 +333,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive editor for the non-Mashgin checkout and exit.",
     )
     parser.add_argument(
+        "--no-alt", dest="no_alt", action="store_true",
+        help="Ignore the non-Mashgin (alt) checkout zone even if --alt-zone is "
+             "given; disables the checkout comparison. Use when the staffed lane "
+             "is too occluded / full of walk-throughs to measure reliably.",
+    )
+    parser.add_argument(
         "--wait-enter-frames", type=int, default=5,
         help="Consecutive in-zone+slow frames before WAITING (default: 5).",
     )
@@ -366,6 +376,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--wait-min-dwell", type=float, default=0.0,
         help="Minimum in-zone dwell (seconds) before counting as in line; "
              "rejects pass-through bystanders (default: 0 = off).",
+    )
+    parser.add_argument(
+        "--min-wait", type=float, default=5.0,
+        help="Minimum real visit time in seconds: a completed visit whose "
+             "outcome-relevant time (POS time if served, line time if abandoned) "
+             "is under this is excluded from every average, chart, and the busy "
+             "signal (kept in the wait log, flagged rejected). Also the dwell a "
+             "person must sustain at the other checkout before a Mashgin<->staffed "
+             "switch counts, so brief box-clips don't register an instant "
+             "transition. 0 disables (default: 5.0).",
     )
     parser.add_argument(
         "--wait-log", default=None, metavar="PATH",
@@ -495,6 +515,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         define_pos_zone=args.define_pos_zone,
         alt_zone=args.alt_zone,
         define_alt_zone=args.define_alt_zone,
+        no_alt=args.no_alt,
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
         transit_speed=args.transit_speed,
@@ -503,6 +524,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         zone_coverage=args.zone_coverage,
         zone_foot_band=args.zone_foot_band,
         wait_min_dwell=args.wait_min_dwell,
+        min_wait=args.min_wait,
         wait_log=args.wait_log,
         reject_short=args.reject_short,
         reject_floor=args.reject_floor,

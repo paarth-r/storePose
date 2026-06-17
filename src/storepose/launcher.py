@@ -26,6 +26,7 @@ from .launcher_core import (
 
 _VIEWSCRIPTS = "viewscripts"
 _CALIB = "calib"
+_ZONES = "zones"
 
 _FLAG_W = 7        # width of each flag cell
 _NAME_W_MAX = 34   # cap on the view-name column
@@ -38,6 +39,8 @@ def _cell(view: View, state, column: Column) -> str:
         return "on" if state.debug else "·"
     if column == Column.CONF:
         return "on" if state.conf else "·"
+    if column == Column.ALT:
+        return "—" if not view.has_alt else ("on" if state.alt else "·")
     if column == Column.CALIB:
         return "—" if not view.has_calib else ("on" if state.calib else "·")
     if column == Column.STRATEGY:
@@ -141,7 +144,7 @@ def _exec_run(view: View, env, extra_args, passthrough) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     passthrough = list(sys.argv[1:] if argv is None else argv)
-    views = discover_views(_VIEWSCRIPTS, _CALIB)
+    views = discover_views(_VIEWSCRIPTS, _CALIB, _ZONES)
     if not views:
         print(f"No view scripts in {_VIEWSCRIPTS}/. Create one first:  "
               f"./view-setup.sh -v <video>", file=sys.stderr)
