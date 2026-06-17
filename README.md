@@ -20,6 +20,11 @@ visit into *waiting in line* and *being served*. From that it derives a stable
 browser dashboard — all on a laptop, in realtime, with no `mmcv`/`mmpose` build
 pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 
+<p align="center">
+  <img src="docs/assets/annotated.png" alt="storePose annotated frame: tracked skeletons, stable IDs, line and POS zones, per-person WAIT/POS timers, and the live busy badge" width="100%">
+</p>
+<p align="center"><sub>A single annotated frame — stable per-person IDs and skeletons, the line zone (orange) and checkouts, live <code>WAIT</code>/<code>POS</code> timers, the at-checkout panel, and the busy badge.</sub></p>
+
 ---
 
 ## Highlights
@@ -197,6 +202,10 @@ in your browser: occupancy, wait/serve moving averages, throughput, the busy
 badge, and the checkout-speed strip. On a file source the timeline is video time;
 on a webcam it is real time. Disable with `--no-dashboard`.
 
+<p align="center">
+  <img src="docs/assets/dashboard.png" alt="storePose live dashboard: currently in line, at checkout, served, average times, and the occupancy chart" width="100%">
+</p>
+
 `--save-mp4` records the run as a single composite — annotated video on the left
 3/4, the live dashboard panel on the right 1/4 — auto-named into `runs/`:
 
@@ -208,9 +217,6 @@ on a webcam it is real time. Disable with `--no-dashboard`.
 uv run python main.py --source videos/clip.mp4 --zone zones/clip.json --busy --save-mp4
 # → runs/clip_<timestamp>.mp4   (left: annotated video · right: dashboard panel)
 ```
-
-> _Maintainer note: drop a full dashboard screenshot at `docs/assets/dashboard.png`
-> and an annotated frame at `docs/assets/annotated.png` to complete the gallery._
 
 ---
 
