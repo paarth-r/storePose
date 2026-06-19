@@ -20,11 +20,6 @@ visit into *waiting in line* and *being served*. From that it derives a stable
 browser dashboard — all on a laptop, in realtime, with no `mmcv`/`mmpose` build
 pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 
-<p align="center">
-  <img src="docs/assets/annotated.png" alt="storePose annotated frame: tracked skeletons, stable IDs, line and POS zones, per-person WAIT/POS timers, and the live busy badge" width="100%">
-</p>
-<p align="center"><sub>A single annotated frame — stable per-person IDs and skeletons, the line zone (orange) and checkouts, live <code>WAIT</code>/<code>POS</code> timers, the at-checkout panel, and the busy badge.</sub></p>
-
 ---
 
 ## Highlights
