@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from storepose.eval.cvat_import import GtShape, GtTrack, parse_cvat_xml
 
 SAMPLE_XML = """<?xml version="1.0" encoding="utf-8"?>

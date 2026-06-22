@@ -9,10 +9,8 @@ well-defined. The pure logic here is unit-tested; the CLI shell lives in
 
 from __future__ import annotations
 
-import csv
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from pathlib import Path
 
 
 @dataclass(frozen=True)
