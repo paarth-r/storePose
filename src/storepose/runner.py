@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import sys
 import time
 import webbrowser
 from collections import deque
@@ -13,7 +14,7 @@ import cv2
 from .busy.aggregator import BusyAggregator
 from .busy.report import write_busy
 from .busy.types import BusyThresholds
-from .config import AppConfig
+from .config import AppConfig, reid_thr_for
 from .dashboard.panel import panel_data as build_panel_data
 from .dashboard.panel import panel_width, render_panel
 from .dashboard.server import DashboardServer
@@ -24,7 +25,9 @@ from .fps import FpsMeter
 from .pipeline import PosePipeline
 from .queue.analyzer import QueueAnalyzer
 from .queue.zone import Zone
+from .tracking import reid_zoo
 from .tracking.appearance import HsvHistogramAppearance
+from .tracking.osnet import OsnetAppearance
 from .tracking.tracker import MultiObjectTracker
 from .video_sink import VideoSink, run_output_path
 from .video_source import VideoSource
@@ -41,12 +44,32 @@ _RIGHT_KEYS = {63235, 65363, 2555904}
 _LEFT_KEYS = {63234, 65361, 2424832}
 
 
+def _build_appearance(config: AppConfig) -> tuple[object | None, str]:
+    """Return ``(appearance_model, effective_backend)``.
+
+    OSNet is default-on; if its weights cannot be fetched or loaded we warn and
+    fall back to the histogram so a run never crashes offline.
+    """
+    if not config.reid:
+        return None, "histogram"  # no model built; a stable label for reid_thr_for
+    if config.reid_backend == "histogram":
+        return HsvHistogramAppearance(kpt_thr=config.kpt_thr), "histogram"
+    try:
+        weights = config.reid_weights or str(reid_zoo.resolve(config.reid_backend))
+        return OsnetAppearance(weights, device=config.device), config.reid_backend
+    except Exception as exc:  # missing weights, bad onnx, no provider, etc.
+        print(
+            f"warning: OSNet re-id ({config.reid_backend}) unavailable ({exc}); "
+            f"falling back to the color-histogram backend.",
+            file=sys.stderr,
+        )
+        return HsvHistogramAppearance(kpt_thr=config.kpt_thr), "histogram"
+
+
 def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
     """Construct the multi-object tracker from config (shared by run + calibrate)."""
     max_age = max(1, round(config.hold_seconds * base_fps))
-    appearance = (
-        HsvHistogramAppearance(kpt_thr=config.kpt_thr) if config.reid else None
-    )
+    appearance, backend = _build_appearance(config)
     reid_max_age = max(1, round(config.reid_seconds * base_fps))
     return MultiObjectTracker(
         max_age=max_age, min_hits=config.min_hits,
@@ -54,7 +77,7 @@ def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
         smooth=config.smooth,
         min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
         appearance=appearance, reid=config.reid,
-        reid_max_age=reid_max_age, reid_thr=config.reid_thr,
+        reid_max_age=reid_max_age, reid_thr=reid_thr_for(backend, config.reid_thr),
     )
 
 

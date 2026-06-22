@@ -16,6 +16,7 @@ from .types import TrackedPerson
 _SPATIAL_GATE_FRAC = 0.12   # base radius as a fraction of the frame diagonal
 _GATE_GROWTH = 0.05         # extra radius per gap frame
 _GATE_CAP_FRAC = 0.5        # never exceed half the frame diagonal
+_GALLERY_MARGIN = 0.05      # gallery (lost) re-attach needs reid_thr + this (no spatial gate)
 
 
 def _center(box: np.ndarray) -> tuple[float, float]:
@@ -43,7 +44,6 @@ class _Candidate:
     lost: _LostEntry | None
     center: tuple[float, float]
     gap: int
-    descriptor: np.ndarray
 
 
 def suppress_coasting_duplicates(tracks: list, max_overlap: float) -> list:
@@ -113,10 +113,7 @@ class MultiObjectTracker:
 
         use_reid = self._reid and self._appearance is not None and frame is not None
         if use_reid:
-            det_descs = [
-                self._appearance.extract(frame, boxes[i], keypoints[i], scores[i])
-                for i in range(n)
-            ]
+            det_descs = self._appearance.extract_batch(frame, boxes, keypoints, scores)
         else:
             det_descs = [None] * n
 
@@ -137,9 +134,14 @@ class MultiObjectTracker:
 
         # 3. update matched tracks
         for d, tr in matches:
-            self._tracks[tr].update(
-                boxes[d], keypoints[d], scores[d], dt, descriptor=det_descs[d],
-                det_score=float(det_scores[d]),
+            t = self._tracks[tr]
+            mem = (
+                self._appearance.update_memory(t.appearance_mem, det_descs[d])
+                if use_reid else None
+            )
+            t.update(
+                boxes[d], keypoints[d], scores[d], dt,
+                appearance_mem=mem, det_score=float(det_scores[d]),
             )
 
         # 4. appearance re-attach leftover detections
@@ -151,12 +153,13 @@ class MultiObjectTracker:
 
         # 5. spawn tracks for still-unmatched detections
         for d in unmatched_dets:
+            mem = self._appearance.new_memory(det_descs[d]) if use_reid else None
             self._tracks.append(
                 Track(
                     self._next_id, boxes[d], keypoints[d], scores[d], dt,
                     min_hits=self.min_hits, smooth=self.smooth,
                     min_cutoff=self.min_cutoff, beta=self.beta,
-                    descriptor=det_descs[d], det_score=float(det_scores[d]),
+                    appearance_mem=mem, det_score=float(det_scores[d]),
                 )
             )
             self._next_id += 1
@@ -167,7 +170,7 @@ class MultiObjectTracker:
             if t.time_since_update >= 1 and not t.confirmed:
                 continue
             if t.time_since_update > self.max_age:
-                if use_reid and t.confirmed and t.descriptor is not None:
+                if use_reid and t.confirmed and t.appearance_mem is not None:
                     self._lost.append(
                         _LostEntry(track=t, center=_center(t.last_box), lost_age=0)
                     )
@@ -203,6 +206,9 @@ class MultiObjectTracker:
     ) -> list[int]:
         """Revive ids for leftover detections via gated appearance match.
 
+        Active (in-frame) candidates keep the spatial gate at ``reid_thr``;
+        gallery (lost) candidates drop the spatial gate and use a stricter
+        ``reid_thr + _GALLERY_MARGIN`` so cross-exit re-entry stays precise.
         Returns the detection indices that remain unmatched (to be spawned).
         """
         diag = float(np.hypot(frame.shape[1], frame.shape[0]))
@@ -210,16 +216,17 @@ class MultiObjectTracker:
         cands: list[_Candidate] = []
         for tr_idx in unmatched_tracks:
             t = self._tracks[tr_idx]
-            if not t.confirmed or t.descriptor is None:
+            if not t.confirmed or t.appearance_mem is None:
                 continue
-            cands.append(_Candidate(t, None, _center(t.last_box), t.time_since_update, t.descriptor))
+            cands.append(_Candidate(t, None, _center(t.last_box), t.time_since_update))
         for e in self._lost:
-            if e.track.descriptor is None:
+            if e.track.appearance_mem is None:
                 continue
-            cands.append(_Candidate(e.track, e, e.center, e.lost_age, e.track.descriptor))
+            cands.append(_Candidate(e.track, e, e.center, e.lost_age))
         if not cands:
             return unmatched_dets
 
+        gallery_thr = min(1.0, self._reid_thr + _GALLERY_MARGIN)
         # (cost, det_index, cand_index) for every gated, above-threshold pair
         pairs: list[tuple[float, int, int]] = []
         for d in unmatched_dets:
@@ -228,14 +235,18 @@ class MultiObjectTracker:
                 continue
             dcx, dcy = _center(boxes[d])
             for ci, cand in enumerate(cands):
-                radius = min(
-                    _SPATIAL_GATE_FRAC * diag * (1.0 + _GATE_GROWTH * cand.gap),
-                    _GATE_CAP_FRAC * diag,
-                )
-                if np.hypot(dcx - cand.center[0], dcy - cand.center[1]) > radius:
-                    continue
-                sim = self._appearance.similarity(dd, cand.descriptor)
-                if sim < self._reid_thr:
+                if cand.lost is None:
+                    radius = min(
+                        _SPATIAL_GATE_FRAC * diag * (1.0 + _GATE_GROWTH * cand.gap),
+                        _GATE_CAP_FRAC * diag,
+                    )
+                    if np.hypot(dcx - cand.center[0], dcy - cand.center[1]) > radius:
+                        continue
+                    thr = self._reid_thr
+                else:
+                    thr = gallery_thr
+                sim = self._appearance.score(cand.track.appearance_mem, dd)
+                if sim < thr:
                     continue
                 pairs.append((1.0 - sim, d, ci))
 
@@ -248,8 +259,9 @@ class MultiObjectTracker:
             used_d.add(d)
             used_c.add(ci)
             cand = cands[ci]
+            mem = self._appearance.update_memory(cand.track.appearance_mem, det_descs[d])
             cand.track.reactivate(boxes[d], keypoints[d], scores[d], dt,
-                                   descriptor=det_descs[d], det_score=float(det_scores[d]))
+                                  appearance_mem=mem, det_score=float(det_scores[d]))
             if cand.lost is not None:
                 self._lost.remove(cand.lost)
                 self._tracks.append(cand.track)

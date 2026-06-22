@@ -18,6 +18,10 @@ from .busy.types import BUSY_STRATEGIES
 # explicit strategies.
 STRATEGY_CYCLE = ("auto", *BUSY_STRATEGIES)
 
+# reid column cycles through the OSNet sizes, the histogram, then off. osnet-x025
+# is first because it is the app default (emitted implicitly by build_run).
+REID_CYCLE = ("osnet-x025", "osnet-x1", "histogram", "off")
+
 
 class Column(IntEnum):
     DASHBOARD = 0
@@ -28,10 +32,11 @@ class Column(IntEnum):
     ALT = 5
     CALIB = 6
     STRATEGY = 7
+    REID = 8
 
 
 COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.SAVE,
-           Column.BLUR, Column.ALT, Column.CALIB, Column.STRATEGY)
+           Column.BLUR, Column.ALT, Column.CALIB, Column.STRATEGY, Column.REID)
 COLUMN_LABELS = {
     Column.DASHBOARD: "dash",
     Column.DEBUG: "debug",
@@ -41,6 +46,7 @@ COLUMN_LABELS = {
     Column.ALT: "alt",
     Column.CALIB: "calib",
     Column.STRATEGY: "strategy",
+    Column.REID: "reid",
 }
 
 
@@ -66,6 +72,7 @@ class ColumnState:
     alt: bool = True
     calib: bool = False
     strategy: str = "auto"
+    reid: str = "osnet-x025"
 
 
 def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path,
@@ -107,6 +114,9 @@ def toggle(view: View, state: ColumnState, column: Column) -> ColumnState:
         return replace(state, blur=not state.blur)
     if column == Column.ALT:
         return replace(state, alt=not state.alt) if view.has_alt else state
+    if column == Column.REID:
+        i = REID_CYCLE.index(state.reid)
+        return replace(state, reid=REID_CYCLE[(i + 1) % len(REID_CYCLE)])
     if not view.has_calib:
         return state  # calib + strategy disabled without a calib file
     if column == Column.CALIB:
@@ -136,6 +146,10 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--no-blur-faces")
     if not state.alt:
         args.append("--no-alt")
+    if state.reid == "off":
+        args.append("--no-reid")
+    elif state.reid != "osnet-x025":  # osnet-x025 is the app default; emit nothing
+        args += ["--reid-backend", state.reid]
     if not state.calib:
         env["STOREPOSE_NO_CALIB"] = "1"  # suppress the script's auto --calib
     elif state.strategy != "auto":

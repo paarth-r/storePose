@@ -66,6 +66,9 @@ def _cell(view: View, state, column: Column) -> str:
         return "—" if not view.has_calib else ("on" if state.calib else "·")
     if column == Column.STRATEGY:
         return "—" if not view.has_calib else state.strategy
+    if column == Column.REID:
+        return {"osnet-x1": "x1", "osnet-x025": "x025",
+                "histogram": "hist", "off": "off"}[state.reid]
     return "?"
 
 

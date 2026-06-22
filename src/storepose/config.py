@@ -10,6 +10,15 @@ from .busy.types import METRICS as BUSY_METRICS
 
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
+REID_BACKENDS = ("osnet-x1", "osnet-x025", "histogram")
+_REID_THR_DEFAULTS = {"osnet-x1": 0.5, "osnet-x025": 0.5, "histogram": 0.6}
+
+
+def reid_thr_for(backend: str, override: float | None) -> float:
+    """Resolve the appearance similarity floor: explicit override, else per-backend."""
+    if override is not None:
+        return override
+    return _REID_THR_DEFAULTS[backend]
 
 
 @dataclass(frozen=True)
@@ -39,7 +48,10 @@ class AppConfig:
             is dropped (suppresses duplicate boxes on one person).
         reid: Re-attach a returning person's id via appearance (requires tracking).
         reid_seconds: How long a lost track stays re-attachable, in seconds.
-        reid_thr: Appearance similarity floor for re-attach, in [-1, 1].
+        reid_backend: Appearance backend / OSNet size (one of ``REID_BACKENDS``).
+        reid_weights: Local OSNet ONNX path overriding the auto-downloaded weights.
+        reid_thr: Appearance similarity floor for re-attach in [-1, 1]; ``None``
+            uses the per-backend default (see ``reid_thr_for``).
         smooth: Whether to One-Euro smooth keypoints.
         smooth_cutoff: One-Euro min_cutoff (lower = smoother/laggier).
         smooth_beta: One-Euro beta (higher = more responsive to speed).
@@ -99,7 +111,9 @@ class AppConfig:
     max_overlap: float = 0.5
     reid: bool = True
     reid_seconds: float = 15.0
-    reid_thr: float = 0.6
+    reid_backend: str = "osnet-x025"
+    reid_weights: str | None = None
+    reid_thr: float | None = None
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -161,7 +175,10 @@ class AppConfig:
             raise ValueError(f"max_overlap must be in [0, 1], got {self.max_overlap}")
         if self.reid_seconds < 0:
             raise ValueError(f"reid_seconds must be >= 0, got {self.reid_seconds}")
-        if not -1.0 <= self.reid_thr <= 1.0:
+        if self.reid_backend not in REID_BACKENDS:
+            raise ValueError(
+                f"reid_backend must be one of {REID_BACKENDS}, got {self.reid_backend!r}")
+        if self.reid_thr is not None and not -1.0 <= self.reid_thr <= 1.0:
             raise ValueError(f"reid_thr must be in [-1, 1], got {self.reid_thr}")
         if self.hold_seconds < 0:
             raise ValueError(f"hold_seconds must be >= 0, got {self.hold_seconds}")
@@ -326,8 +343,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="How long a lost track stays re-attachable, in seconds (default: 10.0).",
     )
     parser.add_argument(
-        "--reid-thr", type=float, default=0.6,
-        help="Appearance similarity floor for re-attach, in [-1,1] (default: 0.6).",
+        "--reid-backend", choices=REID_BACKENDS, default="osnet-x025",
+        help="Appearance backend for re-id: learned OSNet embedding (osnet-x025 = "
+             "fast, osnet-x1 = accurate) or the HSV color histogram "
+             "(default: osnet-x025).",
+    )
+    parser.add_argument(
+        "--reid-weights", default=None, metavar="PATH",
+        help="Local OSNet ONNX file to use instead of the auto-downloaded weights.",
+    )
+    parser.add_argument(
+        "--reid-thr", type=float, default=None,
+        help="Appearance similarity floor for re-attach, in [-1,1]. Default "
+             "resolves per backend (osnet: 0.5, histogram: 0.6).",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
@@ -559,6 +587,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         max_overlap=args.max_overlap,
         reid=args.reid,
         reid_seconds=args.reid_seconds,
+        reid_backend=args.reid_backend,
+        reid_weights=args.reid_weights,
         reid_thr=args.reid_thr,
         smooth=args.smooth,
         smooth_cutoff=args.smooth_cutoff,

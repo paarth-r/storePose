@@ -110,10 +110,10 @@ def test_keeps_coasting_track_that_overlaps_nobody():
 
 
 class _ColorStub:
-    """Appearance descriptor = BGR pixel at the box center of the frame.
+    """Appearance bound to the BGR pixel at a box center; gallery = list of colors.
 
     Lets tests bind identity to a painted color, exercising the real frame
-    plumbing. Similarity is exact-match (1.0 / 0.0).
+    plumbing. ``score`` is exact-match against any gallery entry (1.0 / 0.0).
     """
     def extract(self, frame, box, keypoints, scores):
         cx = int((box[0] + box[2]) / 2.0); cy = int((box[1] + box[3]) / 2.0)
@@ -122,8 +122,43 @@ class _ColorStub:
         px = frame[cy, cx]
         return None if int(px.sum()) == 0 else px.astype(np.float32)
 
-    def similarity(self, a, b):
-        return 1.0 if np.array_equal(a, b) else 0.0
+    def extract_batch(self, frame, boxes, keypoints, scores):
+        return [self.extract(frame, b, None, None) for b in boxes]
+
+    def new_memory(self, desc):
+        return [] if desc is None else [desc]
+
+    def update_memory(self, mem, desc):
+        mem = list(mem or [])
+        if desc is not None:
+            mem.append(desc)
+        return mem
+
+    def score(self, mem, desc):
+        if not mem or desc is None:
+            return -1.0
+        return 1.0 if any(np.array_equal(e, desc) for e in mem) else 0.0
+
+
+class _ConstScoreStub:
+    """Appearance whose score is a fixed value, to probe the gallery margin."""
+    def __init__(self, value):
+        self.value = value
+
+    def extract(self, frame, box, keypoints, scores):
+        return np.array([1.0], np.float32)
+
+    def extract_batch(self, frame, boxes, keypoints, scores):
+        return [np.array([1.0], np.float32) for _ in boxes]
+
+    def new_memory(self, desc):
+        return [desc]
+
+    def update_memory(self, mem, desc):
+        return list(mem or []) + ([] if desc is None else [desc])
+
+    def score(self, mem, desc):
+        return self.value
 
 
 def _frame(boxes_colors, size=400):
@@ -226,3 +261,33 @@ def test_reattach_anchors_to_last_seen_not_coasted_position():
     back = [last_seen_x, 100, last_seen_x + 60, 260]   # return to the last-seen spot
     out2 = tr.update(make_result([back]), 1 / 8, _frame([(back, red)], size=600))
     assert len(out2) == 1 and out2[0].id == 0   # id preserved, not a fresh spawn
+
+
+def test_gallery_reattaches_across_full_frame_exit():
+    tr = _reid_tracker()  # max_age=3, reid_max_age=50
+    left = [20, 180, 60, 260]; red = (0, 0, 220)
+    out = tr.update(make_result([left]), 1 / 30, _frame([(left, red)]))
+    assert out[0].id == 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(6):                 # age out past max_age -> gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    far = [340, 180, 380, 260]         # opposite side, beyond the old spatial gate cap
+    out2 = tr.update(make_result([far]), 1 / 30, _frame([(far, red)]))
+    assert len(out2) == 1 and out2[0].id == 0   # gallery has no spatial gate
+
+
+def test_gallery_threshold_is_stricter_than_active():
+    # score 0.52 clears the active floor (0.5) but not the gallery floor (0.55)
+    tr = MultiObjectTracker(
+        max_age=2, min_hits=1, iou_thr=0.3, smooth=False,
+        appearance=_ConstScoreStub(0.52), reid=True, reid_max_age=50, reid_thr=0.5,
+    )
+    box = [100, 100, 140, 180]
+    f = _frame([(box, (0, 0, 220))])
+    assert tr.update(make_result([box]), 1 / 30, f)[0].id == 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(4):                 # age out -> gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out = tr.update(make_result([back]), 1 / 30, _frame([(back, (0, 0, 220))]))
+    assert out[0].id == 1              # gallery match rejected -> new id
