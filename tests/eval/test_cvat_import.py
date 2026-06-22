@@ -7,6 +7,9 @@ from storepose.eval.cvat_import import (
     occupancy_gt_at,
     parse_cvat_xml,
     present_at,
+    read_occupancy_csv,
+    sample_occupancy_gt,
+    write_occupancy_csv,
 )
 
 SAMPLE_XML = """<?xml version="1.0" encoding="utf-8"?>
@@ -79,3 +82,29 @@ def test_occupancy_counts_only_in_line_and_present():
     assert occupancy_gt_at(tracks, 9) == 0
     # frame 30: track 0 outside, track 1 absent -> 0
     assert occupancy_gt_at(tracks, 30) == 0
+
+
+def test_sample_occupancy_gt_grid_and_values():
+    tracks = parse_cvat_xml(SAMPLE_XML)  # in_line track present frames [10,30)
+    # fps=10 -> 1s == 10 frames; sample every 1s over [0, t_end)
+    samples = sample_occupancy_gt(tracks, fps=10.0, step=1.0)
+    by_t = dict(samples)
+    assert by_t[0.0] == 0    # frame 0
+    # frame 10 is exactly the first keyframe; round(1.0*10)=10 -> present in_line
+    assert by_t[1.0] == 1 or by_t[2.0] == 1  # presence visible at/after entry
+
+
+def test_sample_occupancy_gt_validates_inputs():
+    tracks = parse_cvat_xml(SAMPLE_XML)
+    import pytest
+    with pytest.raises(ValueError):
+        sample_occupancy_gt(tracks, fps=0.0)
+    with pytest.raises(ValueError):
+        sample_occupancy_gt(tracks, fps=10.0, step=0.0)
+
+
+def test_occupancy_csv_roundtrip(tmp_path):
+    samples = [(0.0, 0), (1.0, 2), (2.0, 1)]
+    p = tmp_path / "gt.csv"
+    write_occupancy_csv(p, samples)
+    assert read_occupancy_csv(p) == samples
