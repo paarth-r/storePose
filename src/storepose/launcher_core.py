@@ -18,8 +18,9 @@ from .busy.types import BUSY_STRATEGIES
 # explicit strategies.
 STRATEGY_CYCLE = ("auto", *BUSY_STRATEGIES)
 
-# reid column cycles through the OSNet sizes, the histogram, then off.
-REID_CYCLE = ("osnet-x1", "osnet-x025", "histogram", "off")
+# reid column cycles through the OSNet sizes, the histogram, then off. osnet-x025
+# is first because it is the app default (emitted implicitly by build_run).
+REID_CYCLE = ("osnet-x025", "osnet-x1", "histogram", "off")
 
 
 class Column(IntEnum):
@@ -71,7 +72,7 @@ class ColumnState:
     alt: bool = True
     calib: bool = False
     strategy: str = "auto"
-    reid: str = "osnet-x1"
+    reid: str = "osnet-x025"
 
 
 def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path,
@@ -147,7 +148,7 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--no-alt")
     if state.reid == "off":
         args.append("--no-reid")
-    elif state.reid != "osnet-x1":  # osnet-x1 is the app default; emit nothing
+    elif state.reid != "osnet-x025":  # osnet-x025 is the app default; emit nothing
         args += ["--reid-backend", state.reid]
     if not state.calib:
         env["STOREPOSE_NO_CALIB"] = "1"  # suppress the script's auto --calib

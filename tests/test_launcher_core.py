@@ -191,12 +191,12 @@ def test_build_run_alt_off_emits_no_alt():
 
 def test_reid_column_cycles():
     state = default_state(V)
-    assert state.reid == "osnet-x1"
+    assert state.reid == "osnet-x025"
     seen = [state.reid]
     for _ in range(len(REID_CYCLE)):
         state = toggle_(state, Column.REID)
         seen.append(state.reid)
-    assert seen[1:] == ["osnet-x025", "histogram", "off", "osnet-x1"]
+    assert seen[1:] == ["osnet-x1", "histogram", "off", "osnet-x025"]
 
 
 def test_build_run_default_reid_emits_nothing():
@@ -204,17 +204,17 @@ def test_build_run_default_reid_emits_nothing():
     assert "--reid-backend" not in args and "--no-reid" not in args
 
 
-def test_build_run_osnet025_emits_backend():
-    state = toggle_(default_state(V), Column.REID)  # osnet-x1 -> osnet-x025
-    assert state.reid == "osnet-x025"
+def test_build_run_osnet_x1_emits_backend():
+    state = toggle_(default_state(V), Column.REID)  # osnet-x025 -> osnet-x1
+    assert state.reid == "osnet-x1"
     _env, args = build_run(V, state)
     assert "--reid-backend" in args
-    assert args[args.index("--reid-backend") + 1] == "osnet-x025"
+    assert args[args.index("--reid-backend") + 1] == "osnet-x1"
 
 
 def test_build_run_reid_off_emits_no_reid():
     state = toggle_(toggle_(toggle_(default_state(V), Column.REID), Column.REID),
-                    Column.REID)  # osnet-x1 -> osnet-x025 -> histogram -> off
+                    Column.REID)  # osnet-x025 -> osnet-x1 -> histogram -> off
     assert state.reid == "off"
     _env, args = build_run(V, state)
     assert "--no-reid" in args and "--reid-backend" not in args

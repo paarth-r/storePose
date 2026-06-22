@@ -111,7 +111,7 @@ class AppConfig:
     max_overlap: float = 0.5
     reid: bool = True
     reid_seconds: float = 15.0
-    reid_backend: str = "osnet-x1"
+    reid_backend: str = "osnet-x025"
     reid_weights: str | None = None
     reid_thr: float | None = None
     smooth: bool = True
@@ -343,10 +343,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="How long a lost track stays re-attachable, in seconds (default: 10.0).",
     )
     parser.add_argument(
-        "--reid-backend", choices=REID_BACKENDS, default="osnet-x1",
-        help="Appearance backend for re-id: learned OSNet embedding (osnet-x1 = "
-             "accurate, osnet-x025 = fast) or the HSV color histogram "
-             "(default: osnet-x1).",
+        "--reid-backend", choices=REID_BACKENDS, default="osnet-x025",
+        help="Appearance backend for re-id: learned OSNet embedding (osnet-x025 = "
+             "fast, osnet-x1 = accurate) or the HSV color histogram "
+             "(default: osnet-x025).",
     )
     parser.add_argument(
         "--reid-weights", default=None, metavar="PATH",

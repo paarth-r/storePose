@@ -189,7 +189,7 @@ def test_reid_defaults_on():
     cfg = from_args([])
     assert cfg.reid is True
     assert cfg.reid_seconds == 10.0
-    assert cfg.reid_backend == "osnet-x1"
+    assert cfg.reid_backend == "osnet-x025"
     assert cfg.reid_thr is None
 
 

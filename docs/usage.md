@@ -67,7 +67,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--no-track` | — | Raw per-frame boxes, no stable IDs (disables queue/busy). |
 | `--no-reid` | — | Disable appearance re-id; a returning person gets a new id. |
 | `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
-| `--reid-backend` | `osnet-x1` | Re-id appearance backend: `osnet-x1` (accurate), `osnet-x025` (fast), or `histogram`. The launcher's `reid` column cycles `osnet-x1 → osnet-x025 → histogram → off` per view. |
+| `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. The launcher's `reid` column cycles `osnet-x025 → osnet-x1 → histogram → off` per view. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
 | `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.5, histogram 0.6). |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |

@@ -27,8 +27,9 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 - **Realtime multi-person pose** — YOLOX person detection + RTMPose 17-keypoint
   skeletons, top-down (one pose pass per person).
 - **Stable identities** — SORT-style Kalman + IoU tracking, One-Euro keypoint
-  smoothing, and learned-embedding (OSNet) **re-identification** that re-attaches
-  a returning person to their original id, even after a full exit and re-entry.
+  smoothing, and learned-embedding (OSNet ReID) **re-identification** that
+  re-attaches a returning person to their original id, even after a full exit
+  and re-entry.
 - **Queue state machine** — per-person `OUT → WAITING → SERVING → done`, with a
   bystander/walk-through filter so only people who actually *stop* are counted.
 - **"How busy is the line?"** — a calibrated, hysteresis-stabilized
@@ -278,7 +279,7 @@ Most-used flags:
 | `--max-overlap` | `0.5` | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-reid` | — | Disable appearance re-id. |
 | `--reid-seconds` | `15.0` | How long a lost track stays re-attachable. |
-| `--reid-backend` | `osnet-x1` | Re-id appearance backend: `osnet-x1` (accurate), `osnet-x025` (fast), or `histogram`. |
+| `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
 | `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.5, histogram 0.6). |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
