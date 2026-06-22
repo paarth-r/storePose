@@ -12,6 +12,7 @@ from .zone import Zone
 _COLOR = (0, 180, 255)        # line zone — orange
 _POS_COLOR = (70, 200, 60)    # Mashgin checkout — green (matches drawing.POS_COLOR)
 _ALT_COLOR = (60, 60, 235)    # non-Mashgin checkout — red (matches drawing.ALT_COLOR)
+_BLUR_COLOR = (255, 0, 255)   # censor/blur zone — magenta
 
 
 def default_zone_path(source: int | str) -> str:
@@ -30,6 +31,12 @@ def default_alt_zone_path(source: int | str) -> str:
     """Default ``zones/<name>_alt.json`` path for a non-Mashgin checkout zone."""
     name = f"cam{source}" if isinstance(source, int) else Path(str(source)).stem
     return str(Path("zones") / f"{name}_alt.json")
+
+
+def default_blur_zone_path(source: int | str) -> str:
+    """Default ``zones/<name>_blur.json`` path for a censor/blur zone."""
+    name = f"cam{source}" if isinstance(source, int) else Path(str(source)).stem
+    return str(Path("zones") / f"{name}_blur.json")
 
 
 def define_zone(source: int | str, out_path: str | None = None) -> str:
@@ -87,22 +94,25 @@ def define_zones(
     line_path: str | None = None,
     pos_path: str | None = None,
     alt_path: str | None = None,
+    blur_path: str | None = None,
     only: str | None = None,
 ) -> dict[str, str]:
-    """Draw line (``1``), Mashgin POS (``2``) and non-Mashgin (``3``) contours.
+    """Draw line (``1``), Mashgin POS (``2``), non-Mashgin (``3``) and censor/blur
+    (``4``) contours.
 
     ``n`` finishes the current contour (>=3 pts) and starts a new one; ``u`` undo;
-    ``c`` clear all; ``s`` save; ``q`` quit. ``only`` ("pos" or "alt") locks the
-    editor to that single type. Saves each type that has >=1 contour to its path
-    (line/pos/alt) and returns the saved paths.
+    ``c`` clear all; ``s`` save; ``q`` quit. ``only`` ("pos", "alt" or "blur")
+    locks the editor to that single type. Saves each type that has >=1 contour to
+    its path (line/pos/alt/blur) and returns the saved paths.
     """
     paths = {
         "line": line_path or default_zone_path(source),
         "pos": pos_path or default_pos_zone_path(source),
         "alt": alt_path or default_alt_zone_path(source),
+        "blur": blur_path or default_blur_zone_path(source),
     }
-    colors = {"line": _COLOR, "pos": _POS_COLOR, "alt": _ALT_COLOR}
-    allowed = {"line", "pos", "alt"} if only is None else {only}
+    colors = {"line": _COLOR, "pos": _POS_COLOR, "alt": _ALT_COLOR, "blur": _BLUR_COLOR}
+    allowed = {"line", "pos", "alt", "blur"} if only is None else {only}
 
     cap = cv2.VideoCapture(source)
     ok, frame = cap.read()
@@ -110,7 +120,7 @@ def define_zones(
     if not ok or frame is None:
         raise RuntimeError(f"Could not read a frame from source {source!r}")
 
-    contours: dict[str, list] = {"line": [], "pos": [], "alt": []}
+    contours: dict[str, list] = {"line": [], "pos": [], "alt": [], "blur": []}
     current: list[tuple[int, int]] = []
     mode = only or "line"
 
@@ -129,7 +139,7 @@ def define_zones(
     saved: dict[str, str] = {}
     while True:
         disp = frame.copy()
-        for typ in ("line", "pos", "alt"):
+        for typ in ("line", "pos", "alt", "blur"):
             for poly in contours[typ]:
                 cv2.polylines(disp, [np.array(poly, np.int32).reshape(-1, 1, 2)],
                               True, colors[typ], 2)
@@ -139,9 +149,10 @@ def define_zones(
         if len(current) >= 2:
             cv2.polylines(disp, [np.array(current, np.int32).reshape(-1, 1, 2)],
                           len(current) >= 3, c, 2)
-        hint = (f"mode:{mode.upper()}  1:line 2:mashgin 3:non-mashgin  n:new  "
+        hint = (f"mode:{mode.upper()}  1:line 2:mashgin 3:non-mashgin 4:blur  n:new  "
                 f"u:undo c:clear s:save q:quit   "
-                f"L:{len(contours['line'])} M:{len(contours['pos'])} N:{len(contours['alt'])}")
+                f"L:{len(contours['line'])} M:{len(contours['pos'])} "
+                f"N:{len(contours['alt'])} B:{len(contours['blur'])}")
         cv2.putText(disp, hint, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, c, 2, cv2.LINE_AA)
         cv2.imshow(win, disp)
         key = cv2.waitKey(20) & 0xFF
@@ -153,6 +164,8 @@ def define_zones(
             commit(); mode = "pos"
         elif key == ord("3") and "alt" in allowed:
             commit(); mode = "alt"
+        elif key == ord("4") and "blur" in allowed:
+            commit(); mode = "blur"
         elif key == ord("n"):
             commit()
         elif key == ord("u") and current:
@@ -163,7 +176,7 @@ def define_zones(
                 contours[typ].clear()
         elif key == ord("s"):
             commit()
-            for typ in ("line", "pos", "alt"):
+            for typ in ("line", "pos", "alt", "blur"):
                 if typ in allowed and contours[typ]:
                     Zone.from_polygons(contours[typ]).save(paths[typ])
                     saved[typ] = paths[typ]

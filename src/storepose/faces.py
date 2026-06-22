@@ -71,6 +71,38 @@ def _mosaic(canvas: np.ndarray, region: tuple[int, int, int, int], blocks: int) 
     canvas[y1:y2, x1:x2] = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
 
 
+def blur_zones(canvas: np.ndarray, zone, *, blocks: int = 12) -> np.ndarray:
+    """Pixelate every contour of ``zone`` on ``canvas`` in place (polygon-masked).
+
+    Censors fixed regions of the frame (a back office, a monitor, a doorway)
+    regardless of who is in them. Each contour's bounding box is mosaiced, then
+    only the pixels inside the polygon are written back, so a non-rectangular
+    zone leaves the surrounding pixels sharp. ``zone`` may be ``None`` (no-op).
+    Returns ``canvas``.
+    """
+    if zone is None:
+        return canvas
+    h, w = canvas.shape[:2]
+    for poly in zone.polygons:
+        if len(poly) < 3:
+            continue
+        pts = np.array(poly, np.int32)
+        bx, by, bw, bh = cv2.boundingRect(pts)
+        x1 = max(0, bx); y1 = max(0, by)
+        x2 = min(w, bx + bw); y2 = min(h, by + bh)
+        if x2 <= x1 or y2 <= y1:
+            continue
+        roi = canvas[y1:y2, x1:x2]
+        rh, rw = roi.shape[:2]
+        sw = max(1, rw // blocks); sh = max(1, rh // blocks)
+        small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_LINEAR)
+        mosaic = cv2.resize(small, (rw, rh), interpolation=cv2.INTER_NEAREST)
+        mask = np.zeros((rh, rw), np.uint8)
+        cv2.fillPoly(mask, [pts.reshape(-1, 1, 2) - (x1, y1)], 255)
+        roi[mask > 0] = mosaic[mask > 0]
+    return canvas
+
+
 def blur_faces(
     canvas: np.ndarray,
     faces: Iterable[tuple[np.ndarray, np.ndarray | None, np.ndarray | None]],

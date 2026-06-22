@@ -23,7 +23,7 @@ from .dashboard.state import DashboardState
 from .dashboard.stream import StreamHub
 from .dashboard.stream_payload import build_overlay
 from .drawing import annotate, annotate_busy, annotate_queue, annotate_tracked
-from .faces import blur_faces
+from .faces import blur_faces, blur_zones
 from .fps import FpsMeter
 from .pipeline import PosePipeline
 from .queue.analyzer import QueueAnalyzer
@@ -256,6 +256,9 @@ class Runner:
                 elif config.pos_zone or config.alt_zone:
                     print("Note: --pos-zone/--alt-zone need --zone (the line zone); ignoring.")
 
+                # Censor zone: pixelated independently of tracking/queue analysis.
+                blur_zone = Zone.load(config.blur_zone) if config.blur_zone else None
+
                 busy = None
                 if config.busy and analyzer is not None:
                     if config.calib:
@@ -411,6 +414,8 @@ class Runner:
                             faces = [(result.boxes[i], result.keypoints[i],
                                       result.scores[i]) for i in range(result.count)]
                         blur_faces(canvas, faces, config.kpt_thr)
+                    if blur_zone is not None:
+                        blur_zones(canvas, blur_zone)
 
                     if dash_state is not None and analyzer is None:
                         dash_state.observe(clock, 0, 0)  # keep the dashboard ticking
@@ -424,9 +429,12 @@ class Runner:
                             s_faces = [(result.boxes[i], result.keypoints[i],
                                         result.scores[i]) for i in range(result.count)]
                         s_frame = frame
-                        if config.blur_faces:
+                        if config.blur_faces or blur_zone is not None:
                             s_frame = frame.copy()
-                            blur_faces(s_frame, s_faces, config.kpt_thr)
+                            if config.blur_faces:
+                                blur_faces(s_frame, s_faces, config.kpt_thr)
+                            if blur_zone is not None:
+                                blur_zones(s_frame, blur_zone)
                         statuses = qresult.statuses if qresult is not None else []
                         busy_state = (busy_label, busy_value) if busy is not None else None
                         h, w = frame.shape[:2]

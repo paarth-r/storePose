@@ -221,6 +221,8 @@ Tuning knobs:
 | `--define-pos-zone` | — | Draw the POS polygon and exit. |
 | `--alt-zone PATH` | — | Non-Mashgin checkout zone; the dashboard shows avg serve time at Mashgin (green) vs non-Mashgin (red). |
 | `--define-alt-zone` | — | Draw the non-Mashgin checkout polygon and exit. |
+| `--blur-zone PATH` | — | Censor-zone JSON; pixelate these polygon regions in the live view, recording, and browser feed (e.g. to hide a monitor or doorway). Draw it with `4` in `--define-zone`, or `--define-blur-zone`. |
+| `--define-blur-zone` | — | Draw the censor/blur polygon and exit. |
 | `--no-alt` | — | Ignore the alt zone even if `--alt-zone` is set; drops the checkout comparison (use when the staffed lane is too occluded / walk-through-heavy). Also the `alt` toggle column in the launcher. |
 
 ### Rejecting too-short visits (`--reject-short`)
