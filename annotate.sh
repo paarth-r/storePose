@@ -29,26 +29,24 @@ fi
 N=${#FILES[@]}
 SEL=0
 OFFSET=0
-MAX_VIS=16  # max rows visible at once
+MAX_VIS=16
 
 # ---- terminal helpers ----
 _t() { tput "$@" 2>/dev/null || true; }
 
 _restore() {
-  _t cnorm   # show cursor
-  _t rmcup   # restore original screen
+  _t cnorm
+  _t rmcup
 }
 trap '_restore' EXIT INT TERM
 
-_t smcup    # switch to alternate screen
-_t civis    # hide cursor
+_t smcup
+_t civis
 
 _draw() {
   _t clear
-  # header
-  printf "\033[1mCVAT Annotation Launcher\033[0m\n"
-  printf "%s/  (%d files)   " "$VIDEOS_DIR" "$N"
-  printf "\033[2m arrows  Enter=annotate  q=quit\033[0m\n\n"
+  printf "\033[1mCVAT Annotation Launcher\033[0m — %s/  (%d files)\n" "$VIDEOS_DIR" "$N"
+  printf "\033[2m  arrows to move   Enter to annotate   q to quit\033[0m\n\n"
 
   local limit=$(( OFFSET + MAX_VIS < N ? OFFSET + MAX_VIS : N ))
   local i
@@ -60,22 +58,11 @@ _draw() {
     fi
   done
 
-  # scroll indicators
-  if (( OFFSET > 0 )); then
-    _t cup 3 0
-    printf "\033[2m  ^ %d more above\033[0m" "$OFFSET"
-  fi
+  printf "\n"
+  (( OFFSET > 0 )) && printf "  \033[2m^ %d more above\033[0m\n" "$OFFSET" || true
   local below=$(( N - OFFSET - MAX_VIS ))
-  if (( below > 0 )); then
-    _t cup $(( MAX_VIS + 4 )) 0
-    printf "\033[2m  v %d more below\033[0m" "$below"
-  fi
-
-  # footer: show index
-  local rows
-  rows=$(_t lines 2>/dev/null) || rows=24
-  _t cup $(( rows - 1 )) 0
-  printf "\033[2m  [%d / %d]\033[0m" "$(( SEL + 1 ))" "$N"
+  (( below > 0 )) && printf "  \033[2mv %d more below\033[0m\n" "$below" || true
+  printf "  \033[2m[%d / %d]\033[0m\n" "$(( SEL + 1 ))" "$N"
 }
 
 # ---- main loop ----
@@ -83,28 +70,29 @@ while true; do
   _draw
   IFS= read -rs -n1 KEY
   case "$KEY" in
-    q|Q|$'\x1b')
-      # distinguish Esc alone (quit) from Esc+[ (arrow key)
-      IFS= read -rs -n2 -t 0.05 ESC || ESC=""
-      case "$ESC" in
-        '[A')  # up arrow
+    q|Q) exit 0 ;;
+    $'\n'|$'\r') break ;;
+    $'\x1b')
+      # read the two follow-on bytes one at a time so a partial read can't
+      # reset the whole sequence (read -n2 || ESC="" would lose the first byte)
+      C1="" C2=""
+      IFS= read -rs -n1 -t 0.15 C1 || true
+      IFS= read -rs -n1 -t 0.05 C2 || true
+      case "${C1}${C2}" in
+        '[A')  # up
           (( SEL > 0 )) && (( SEL-- )) || true
           (( SEL < OFFSET )) && OFFSET=$SEL || true
           ;;
-        '[B')  # down arrow
+        '[B')  # down
           (( SEL < N - 1 )) && (( SEL++ )) || true
           (( SEL >= OFFSET + MAX_VIS )) && (( OFFSET++ )) || true
           ;;
-        '')    # bare Esc or q
-          exit 0 ;;
+        '') exit 0 ;;  # bare Esc
       esac
       ;;
-    $'\n'|$'\r')
-      break ;;
   esac
 done
 
-# clean up before handing off to cvat-annotate.sh
 trap - EXIT INT TERM
 _restore
 
