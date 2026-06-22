@@ -78,18 +78,13 @@ export function CheckoutEdge({ m }: { m: Metrics | null }) {
         <>
           {faster ? (
             <>
-              <div className="flex items-baseline gap-2">
-                <span className="tnum text-[2.3rem] font-semibold leading-none tracking-[-0.02em] text-ink">
-                  {times}×
-                </span>
-                <span className="text-[0.82rem] font-medium" style={{ color: "var(--color-go)" }}>
-                  faster than a staffed lane
+              <div className="text-[1.7rem] font-semibold leading-tight tracking-[-0.01em] text-ink">
+                Turns one cashier into{" "}
+                <span className="tnum" style={{ color: "var(--color-go)" }}>
+                  {times}
                 </span>
               </div>
-              <p className="mt-1 text-[0.76rem] text-faint">
-                Turns one cashier into {times} · saves {fmtSeconds(Math.abs(delta))}/customer
-                {(c?.num_mashgins ?? 1) > 1 ? ` · self-checkout ×${c?.num_mashgins}` : ""}
-              </p>
+              <p className="mt-1.5 text-[0.78rem] text-faint">{times}× faster than a staffed lane</p>
             </>
           ) : (
             <>
