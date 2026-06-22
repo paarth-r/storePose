@@ -1,8 +1,20 @@
 # Re-id: learned OSNet embedding behind the appearance seam
 
 **Date:** 2026-06-22
-**Status:** Approved design, pre-implementation
-**Branch:** TBD (feature branch off `main`)
+**Status:** Implemented (branch `feat/reid-osnet-embedding`)
+**Branch:** `feat/reid-osnet-embedding`
+
+## Implementation note (deviation from the original design)
+
+The design below assumed `osnet-x1` as the default backend. During
+implementation no clean, hash-stable, ReID-trained `osnet_x1_0` ONNX could be
+sourced publicly, while a verified MSMT17 `osnet_x0_25` ONNX was available. So
+the shipped default is **`osnet-x025`** (verified, pinned, works out of the box);
+`osnet-x1` remains a selectable backend but is unpinned and currently warns and
+falls back to the histogram until weights are sourced. Accordingly the launcher
+cycle starts at `osnet-x025` (`REID_CYCLE = ("osnet-x025", "osnet-x1",
+"histogram", "off")`). Read every `osnet-x1`-as-default reference below with this
+substitution.
 
 ## Goal
 

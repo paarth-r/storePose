@@ -70,6 +70,8 @@ class HsvHistogramAppearance:
         return hist.astype(np.float32)
 
     def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
+        # Convenience for directly comparing two histograms (used by tests); not
+        # part of the AppearanceModel seam, which scores via new_memory/score.
         if a is None or b is None:
             return -1.0
         return float(cv2.compareHist(a, b, cv2.HISTCMP_CORREL))

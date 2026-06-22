@@ -53,8 +53,12 @@ def resolve(backend: str) -> Path:
     dest = _CACHE_DIR / spec.filename
     if not dest.is_file():
         tmp = dest.with_suffix(dest.suffix + ".part")
-        urllib.request.urlretrieve(spec.url, tmp)
-        tmp.replace(dest)
+        try:
+            urllib.request.urlretrieve(spec.url, tmp)
+            tmp.replace(dest)
+        except Exception:
+            tmp.unlink(missing_ok=True)  # don't leave a truncated .part behind
+            raise
     actual = _sha256(dest)
     if spec.sha256 and actual != spec.sha256:
         dest.unlink(missing_ok=True)

@@ -51,7 +51,7 @@ def _build_appearance(config: AppConfig) -> tuple[object | None, str]:
     fall back to the histogram so a run never crashes offline.
     """
     if not config.reid:
-        return None, config.reid_backend
+        return None, "histogram"  # no model built; a stable label for reid_thr_for
     if config.reid_backend == "histogram":
         return HsvHistogramAppearance(kpt_thr=config.kpt_thr), "histogram"
     try:

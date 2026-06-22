@@ -108,7 +108,7 @@ def test_fixed_batch_runs_per_crop(monkeypatch):
     boxes = [np.array([10, 10, 80, 200], float), np.array([100, 10, 170, 200], float)]
     descs = app.extract_batch(frame, boxes, [None, None], [None, None])
     assert len(descs) == 2 and all(d is not None for d in descs)
-    # fixed batch dim -> one run per crop (issue #585 safety), never a 2-row batch
+    # fixed batch of 1 -> each chunk holds 1 row; never a >1 batch (issue #585 safety)
     assert app._session.calls == [1, 1]
 
 

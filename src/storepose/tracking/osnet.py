@@ -61,7 +61,7 @@ class OsnetAppearance:
     def _crop(self, frame, box):
         h, w = frame.shape[:2]
         x1 = max(0, min(int(box[0]), w - 1))
-        x2 = max(0, min(int(box[2]), w))
+        x2 = max(0, min(int(box[2]), w))      # x2/y2 are exclusive slice bounds
         y1 = max(0, min(int(box[1]), h - 1))
         y2 = max(0, min(int(box[3]), h))
         if x2 - x1 < _MIN_CROP or y2 - y1 < _MIN_CROP:
@@ -103,6 +103,8 @@ class OsnetAppearance:
         return g
 
     def update_memory(self, mem, desc):
+        # mutates the deque in place (maxlen caps it) and returns it; callers must
+        # use the return value, mirroring the histogram's copy-and-return style.
         if mem is None:
             mem = deque(maxlen=_GALLERY_K)
         if desc is not None:
