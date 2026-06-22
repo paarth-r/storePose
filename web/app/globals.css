@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* ── Design tokens ───────────────────────────────────────────────────────────
+   Clean product surface. Color is reserved to encode real state — green reads
+   "served / fast / calm" (the product's checkout-speed thesis), amber "waiting",
+   red "busy". Live figures are set in tabular mono for an instrument feel. */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --color-bg: #fafaf9;
+  --color-panel: #ffffff;
+  --color-sunken: #f4f4f2;
+  --color-hairline: #e9e9e6;
+  --color-hairline-strong: #dededa;
+
+  --color-ink: #19191c;
+  --color-muted: #6c6c72;
+  --color-faint: #9b9ba1;
+
+  --color-go: #15803d;        /* served / low / fast */
+  --color-go-wash: #eaf5ee;
+  --color-wait: #b45309;      /* waiting / medium */
+  --color-wait-wash: #fbf2e6;
+  --color-busy: #be123c;      /* high */
+  --color-busy-wash: #fdeef0;
+  --color-accent: #15803d;
+
+  --shadow-card: 0 1px 2px rgba(20, 20, 25, 0.04), 0 1px 3px rgba(20, 20, 25, 0.05);
+  --shadow-raised: 0 1px 2px rgba(20, 20, 25, 0.05), 0 8px 24px rgba(20, 20, 25, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* tabular figures everywhere a number can change in place */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.eyebrow {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+@keyframes livepulse {
+  0% { box-shadow: 0 0 0 0 rgba(21, 128, 61, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(21, 128, 61, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(21, 128, 61, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -8,6 +8,7 @@ import time
 import webbrowser
 from collections import deque
 from contextlib import ExitStack
+from pathlib import Path
 
 import cv2
 
@@ -19,6 +20,8 @@ from .dashboard.panel import panel_data as build_panel_data
 from .dashboard.panel import panel_width, render_panel
 from .dashboard.server import DashboardServer
 from .dashboard.state import DashboardState
+from .dashboard.stream import StreamHub
+from .dashboard.stream_payload import build_overlay
 from .drawing import annotate, annotate_busy, annotate_queue, annotate_tracked
 from .faces import blur_faces
 from .fps import FpsMeter
@@ -152,6 +155,16 @@ def _scrub(view: int, delta: int, length: int) -> int:
     if length <= 0:
         return 0
     return max(0, min(view + delta, length - 1))
+
+
+def _web_export_dir() -> Path | None:
+    """Path to the built Next.js export (``web/out``) if it exists, else ``None``.
+
+    When present the dashboard server serves the polished Next.js UI; otherwise it
+    falls back to the self-contained legacy HTML page.
+    """
+    d = Path(__file__).resolve().parent.parent.parent / "web" / "out"
+    return d if d.is_dir() else None
 
 
 def _draw_debug_banner(img, text: str) -> None:
@@ -307,8 +320,12 @@ class Runner:
                 if config.dashboard or sink is not None:
                     dash_state = DashboardState()
                     dash_state.num_mashgins = config.num_mashgins
+                stream_hub = None
                 if config.dashboard:
-                    dash_server = DashboardServer(dash_state, port=config.dashboard_port)
+                    stream_hub = StreamHub()
+                    dash_server = DashboardServer(
+                        dash_state, port=config.dashboard_port,
+                        hub=stream_hub, static_dir=_web_export_dir())
                     dash_server.start()
                     stack.callback(dash_server.stop)
                     print(f"Dashboard: {dash_server.url}")
@@ -334,6 +351,8 @@ class Runner:
                 for frame in source:
                     frame_idx += 1
                     rows: list[dict] = []
+                    people: list = []
+                    qresult = None
                     if is_file:
                         dt = base_dt                       # file: video time
                     else:
@@ -395,6 +414,29 @@ class Runner:
 
                     if dash_state is not None and analyzer is None:
                         dash_state.observe(clock, 0, 0)  # keep the dashboard ticking
+
+                    # Browser feed: publish the raw (face-blurred) frame + overlay
+                    # data, but only while a browser is watching (lazy encode).
+                    if stream_hub is not None and stream_hub.active:
+                        if tracker is not None:
+                            s_faces = [(p.box, p.keypoints, p.scores) for p in people]
+                        else:
+                            s_faces = [(result.boxes[i], result.keypoints[i],
+                                        result.scores[i]) for i in range(result.count)]
+                        s_frame = frame
+                        if config.blur_faces:
+                            s_frame = frame.copy()
+                            blur_faces(s_frame, s_faces, config.kpt_thr)
+                        statuses = qresult.statuses if qresult is not None else []
+                        busy_state = (busy_label, busy_value) if busy is not None else None
+                        h, w = frame.shape[:2]
+                        stream_hub.publish(
+                            s_frame,
+                            build_overlay(
+                                people, statuses,
+                                {"line": zone, "pos": pos_zone, "alt": alt_zone},
+                                busy_state, w, h),
+                        )
 
                     if sink is not None:
                         # left 3/4 video, right 1/4 dashboard panel, one frame
