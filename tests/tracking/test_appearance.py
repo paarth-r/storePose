@@ -59,3 +59,33 @@ def test_similarity_with_none_inputs():
     assert valid is not None
     assert app.similarity(None, None) == -1.0
     assert app.similarity(None, valid) == -1.0
+
+
+def test_histogram_memory_seed_update_score():
+    app = HsvHistogramAppearance(kpt_thr=0.5)
+    box = np.array([40, 40, 120, 160], float)
+    red = app.extract(_frame_with_rect((0, 0, 220), 40, 40, 120, 160), box, None, None)
+    blue = app.extract(_frame_with_rect((220, 0, 0), 40, 40, 120, 160), box, None, None)
+    mem = app.new_memory(red)
+    assert app.score(mem, red) > 0.8
+    assert app.score(mem, blue) < 0.3
+    # update_memory blends toward the new observation but keeps it a single hist
+    mem2 = app.update_memory(mem, blue)
+    assert mem2.shape == red.shape
+
+
+def test_histogram_memory_handles_none():
+    app = HsvHistogramAppearance(kpt_thr=0.5)
+    assert app.new_memory(None) is None
+    assert app.score(None, None) == -1.0
+    desc = app.extract(_frame_with_rect((0, 0, 220), 40, 40, 120, 160),
+                       np.array([40, 40, 120, 160], float), None, None)
+    assert app.update_memory(None, desc) is not None        # seeds from None
+    assert np.array_equal(app.update_memory(desc, None), desc)  # None obs keeps mem
+
+
+def test_histogram_extract_batch_aligns():
+    app = HsvHistogramAppearance(kpt_thr=0.5)
+    f = _frame_with_rect((0, 0, 220), 40, 40, 120, 160)
+    descs = app.extract_batch(f, [np.array([40, 40, 120, 160], float)], [None], [None])
+    assert len(descs) == 1 and descs[0] is not None

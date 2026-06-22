@@ -16,12 +16,17 @@ _L_SHOULDER, _R_SHOULDER, _L_HIP, _R_HIP = 5, 6, 11, 12
 _H_BINS, _S_BINS = 32, 32
 _SAT_MIN, _VAL_MIN, _VAL_MAX = 40, 40, 250  # background/shadow/highlight mask (0-255)
 
+_DESC_ALPHA = 0.3  # histogram EMA weight for a new observation
+
 
 class AppearanceModel(Protocol):
-    """Extracts a per-person descriptor and scores descriptor similarity."""
+    """Extracts per-person descriptors and owns per-track appearance memory."""
 
     def extract(self, frame, box, keypoints, scores) -> np.ndarray | None: ...
-    def similarity(self, a: np.ndarray | None, b: np.ndarray | None) -> float: ...
+    def extract_batch(self, frame, boxes, keypoints, scores) -> list[np.ndarray | None]: ...
+    def new_memory(self, desc) -> object: ...
+    def update_memory(self, mem, desc) -> object: ...
+    def score(self, mem, desc) -> float: ...
 
 
 def _torso_rect(box, keypoints, scores, kpt_thr) -> tuple[int, int, int, int]:
@@ -68,3 +73,25 @@ class HsvHistogramAppearance:
         if a is None or b is None:
             return -1.0
         return float(cv2.compareHist(a, b, cv2.HISTCMP_CORREL))
+
+    def extract_batch(self, frame, boxes, keypoints, scores) -> list[np.ndarray | None]:
+        return [
+            self.extract(frame, boxes[i], keypoints[i], scores[i])
+            for i in range(len(boxes))
+        ]
+
+    def new_memory(self, desc):
+        return None if desc is None else np.array(desc, dtype=np.float32)
+
+    def update_memory(self, mem, desc):
+        if desc is None:
+            return mem
+        desc = np.array(desc, dtype=np.float32)
+        if mem is None:
+            return desc
+        return ((1.0 - _DESC_ALPHA) * mem + _DESC_ALPHA * desc).astype(np.float32)
+
+    def score(self, mem, desc) -> float:
+        if mem is None or desc is None:
+            return -1.0
+        return float(cv2.compareHist(mem, desc, cv2.HISTCMP_CORREL))
