@@ -21,9 +21,6 @@ def color_for(track_id: int) -> tuple[int, int, int]:
     return _PALETTE[track_id % len(_PALETTE)]
 
 
-_DESC_ALPHA = 0.3  # appearance descriptor EMA weight for new observations
-
-
 class Track:
     """One person's track. Created from a detection, updated or coasted per frame."""
 
@@ -39,7 +36,7 @@ class Track:
         smooth: bool,
         min_cutoff: float,
         beta: float,
-        descriptor: np.ndarray | None = None,
+        appearance_mem: object | None = None,
         det_score: float | None = None,
     ):
         self.id = track_id
@@ -56,9 +53,7 @@ class Track:
         )
         self.keypoints: np.ndarray | None = None
         self.scores: np.ndarray | None = None
-        self.descriptor: np.ndarray | None = (
-            None if descriptor is None else np.array(descriptor, dtype=np.float32)
-        )
+        self.appearance_mem = appearance_mem  # opaque; owned by the AppearanceModel
         self._ingest_pose(keypoints, scores, dt)
 
     def _ingest_pose(self, keypoints, scores, dt) -> None:
@@ -75,18 +70,7 @@ class Track:
         self.kalman.predict()
         self.time_since_update += 1
 
-    def _update_descriptor(self, descriptor) -> None:
-        if descriptor is None:
-            return
-        descriptor = np.array(descriptor, dtype=np.float32)
-        if self.descriptor is None:
-            self.descriptor = descriptor
-        else:
-            self.descriptor = (
-                (1.0 - _DESC_ALPHA) * self.descriptor + _DESC_ALPHA * descriptor
-            ).astype(np.float32)
-
-    def update(self, box, keypoints, scores, dt, descriptor=None, det_score=None) -> None:
+    def update(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
         self.last_box = np.asarray(box, float)
@@ -96,9 +80,10 @@ class Track:
             self.confirmed = True
         self.det_score = det_score
         self._ingest_pose(keypoints, scores, dt)
-        self._update_descriptor(descriptor)
+        if appearance_mem is not None:
+            self.appearance_mem = appearance_mem
 
-    def reactivate(self, box, keypoints, scores, dt, descriptor=None, det_score=None) -> None:
+    def reactivate(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
         """Revive a lost/coasting track at a new detection, keeping id and color."""
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)
@@ -107,7 +92,8 @@ class Track:
         self.confirmed = True
         self.det_score = det_score
         self._ingest_pose(keypoints, scores, dt)
-        self._update_descriptor(descriptor)
+        if appearance_mem is not None:
+            self.appearance_mem = appearance_mem
 
     @property
     def box(self) -> np.ndarray:

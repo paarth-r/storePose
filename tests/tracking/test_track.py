@@ -46,36 +46,39 @@ def test_predict_marks_coasting():
     assert t.time_since_update == 0
 
 
-def _track(box, descriptor=None):
+def _track(box, appearance_mem=None):
     return Track(0, np.array(box, float), None, None, 1 / 30,
                  min_hits=1, smooth=False, min_cutoff=1.0, beta=0.007,
-                 descriptor=descriptor)
+                 appearance_mem=appearance_mem)
 
 
-def test_descriptor_seeded_then_blended():
-    t = _track([0, 0, 10, 20], descriptor=np.array([1.0, 0.0], np.float32))
-    assert np.allclose(t.descriptor, [1.0, 0.0])
-    t.update(np.array([0, 0, 10, 20], float), None, None, 1 / 30,
-             descriptor=np.array([0.0, 1.0], np.float32))
-    # EMA alpha=0.3 -> 0.7*[1,0] + 0.3*[0,1]
-    assert np.allclose(t.descriptor, [0.7, 0.3])
+def test_appearance_mem_stored_on_init():
+    t = _track([0, 0, 10, 20], appearance_mem=["m0"])
+    assert t.appearance_mem == ["m0"]
+
+
+def test_update_replaces_mem_when_given():
+    t = _track([0, 0, 10, 20], appearance_mem=["m0"])
+    t.update(np.array([0, 0, 10, 20], float), None, None, 1 / 30, appearance_mem=["m1"])
+    assert t.appearance_mem == ["m1"]
+
+
+def test_update_none_mem_keeps_previous():
+    t = _track([0, 0, 10, 20], appearance_mem=["m0"])
+    t.update(np.array([0, 0, 10, 20], float), None, None, 1 / 30, appearance_mem=None)
+    assert t.appearance_mem == ["m0"]
 
 
 def test_reactivate_reseats_motion_and_keeps_identity():
-    t = _track([0, 0, 10, 20], descriptor=np.array([1.0], np.float32))
+    t = _track([0, 0, 10, 20], appearance_mem=["m0"])
     t.confirmed = True
     for _ in range(5):
         t.predict()
     assert t.time_since_update == 5
     t.reactivate(np.array([100, 100, 110, 120], float), None, None, 1 / 30,
-                 descriptor=np.array([1.0], np.float32))
+                 appearance_mem=["m1"])
     assert t.time_since_update == 0
     assert t.confirmed is True
     assert np.allclose(t.box, [100, 100, 110, 120], atol=1.0)
     assert t.hits == 2  # reactivation counts as a fresh match
-
-
-def test_update_descriptor_none_keeps_previous():
-    t = _track([0, 0, 10, 20], descriptor=np.array([1.0, 0.0], np.float32))
-    t.update(np.array([0, 0, 10, 20], float), None, None, 1 / 30, descriptor=None)
-    assert np.allclose(t.descriptor, [1.0, 0.0])
+    assert t.appearance_mem == ["m1"]
