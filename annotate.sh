@@ -8,6 +8,8 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
+[[ -t 0 ]] || { printf "error: stdin is not a terminal\n" >&2; exit 1; }
+
 VIDEOS_DIR="${1:-videos}"
 
 if [[ ! -d "$VIDEOS_DIR" ]]; then
@@ -15,7 +17,6 @@ if [[ ! -d "$VIDEOS_DIR" ]]; then
   exit 1
 fi
 
-# collect .mp4 files (sorted, preserves spaces in filenames)
 FILES=()
 while IFS= read -r f; do
   FILES+=("$f")
@@ -31,15 +32,21 @@ SEL=0
 OFFSET=0
 MAX_VIS=16
 
-# ---- terminal helpers ----
+# ---- terminal setup ----
+# stty cbreak -echo: read one char at a time, suppress echo.
+# Without this, bash's read -s doesn't fully own the terminal and
+# unconsumed escape sequence bytes leak into the shell prompt on exit.
+OLD_STTY=$(stty -g)
 _t() { tput "$@" 2>/dev/null || true; }
 
 _restore() {
+  stty "$OLD_STTY" 2>/dev/null || true
   _t cnorm
   _t rmcup
 }
 trap '_restore' EXIT INT TERM
 
+stty cbreak -echo
 _t smcup
 _t civis
 
@@ -68,27 +75,29 @@ _draw() {
 # ---- main loop ----
 while true; do
   _draw
-  IFS= read -rs -n1 KEY
+  IFS= read -rn1 KEY || KEY=""
   case "$KEY" in
     q|Q) exit 0 ;;
     $'\n'|$'\r') break ;;
     $'\x1b')
-      # read the two follow-on bytes one at a time so a partial read can't
-      # reset the whole sequence (read -n2 || ESC="" would lose the first byte)
-      C1="" C2=""
-      IFS= read -rs -n1 -t 0.15 C1 || true
-      IFS= read -rs -n1 -t 0.05 C2 || true
-      case "${C1}${C2}" in
-        '[A')  # up
-          (( SEL > 0 )) && (( SEL-- )) || true
-          (( SEL < OFFSET )) && OFFSET=$SEL || true
-          ;;
-        '[B')  # down
-          (( SEL < N - 1 )) && (( SEL++ )) || true
-          (( SEL >= OFFSET + MAX_VIS )) && (( OFFSET++ )) || true
-          ;;
-        '') exit 0 ;;  # bare Esc
-      esac
+      # read the bracket, then the command letter, with short timeouts
+      IFS= read -rn1 -t 0.1 C1 || C1=""
+      if [[ "$C1" == "[" ]]; then
+        IFS= read -rn1 -t 0.1 C2 || C2=""
+        case "$C2" in
+          A)  # up arrow
+            (( SEL > 0 )) && (( SEL-- )) || true
+            (( SEL < OFFSET )) && OFFSET=$SEL || true
+            ;;
+          B)  # down arrow
+            (( SEL < N - 1 )) && (( SEL++ )) || true
+            (( SEL >= OFFSET + MAX_VIS )) && (( OFFSET++ )) || true
+            ;;
+        esac
+      elif [[ -z "$C1" ]]; then
+        exit 0  # bare Esc
+      fi
+      # right/left/F-keys: sequence consumed, nothing happens
       ;;
   esac
 done
