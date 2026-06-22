@@ -55,6 +55,9 @@ SCRIPT="viewscripts/${STEM}.sh"
   echo 'set -euo pipefail'
   echo 'cd "$(dirname "$0")/.."'
   echo ''
+  echo '# build the web dashboard (web/out) if missing/stale so it serves the new UI'
+  echo '[ -x ./build-web.sh ] && ./build-web.sh'
+  echo ''
   printf 'CALIB=%q\n' "$CAL"
   echo 'EXTRA=()'
   echo '# pick up busy calibration if it exists, unless STOREPOSE_NO_CALIB is set'
