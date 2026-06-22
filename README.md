@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/python-3.12-5878ff.svg" alt="Python 3.12">
   <img src="https://img.shields.io/badge/runtime-ONNX%20Runtime-0e1421.svg" alt="ONNX Runtime">
   <img src="https://img.shields.io/badge/pose-RTMPose%20%2B%20YOLOX-46c83c.svg" alt="RTMPose + YOLOX">
-  <img src="https://img.shields.io/badge/tests-333%20passing-34d399.svg" alt="333 tests passing">
+  <img src="https://img.shields.io/badge/tests-375%20passing-34d399.svg" alt="375 tests passing">
 </p>
 
 **storePose** turns ordinary store-camera video into a live answer to one operational
@@ -38,14 +38,15 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 - **Checkout comparison** — Mashgin self-checkout vs the staffed lane, with
   **kiosk-count normalization** (`--num-mashgins`) and **occlusion-tolerant
   re-assignment** so one occluded serve isn't miscounted as two.
-- **Live dashboard** — a zero-dependency localhost web app with occupancy,
-  wait/serve, throughput, and a Mashgin-vs-staffed speed strip.
+- **Live dashboard** — a Next.js web app served by the Python process (no Node at
+  runtime) with a live annotated video feed plus occupancy, wait/serve,
+  throughput, and a Mashgin-vs-staffed speed strip.
 - **Composite recording** — save a single `.mp4` with the annotated video on the
   left 3/4 and the live dashboard panel on the right 1/4.
 - **Privacy by default** — every face is pixelated (localized from the face
   keypoints, falling back to the top of the box) in the live view, recordings,
   and debug frames; opt out with `--no-blur-faces`.
-- **Reproducible & tested** — 333 unit tests; every feature has a design spec in
+- **Reproducible & tested** — 375 unit tests; every feature has a design spec in
   [`docs/superpowers/specs/`](docs/superpowers/specs).
 
 ## Pipeline
@@ -54,7 +55,7 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 flowchart LR
   A([Camera / video]) --> B[YOLOX<br/>person detection]
   B --> C[RTMPose<br/>17 keypoints]
-  C --> D[SORT tracker<br/>Kalman · IoU · One-Euro<br/>appearance re-id]
+  C --> D[SORT tracker<br/>Kalman · IoU · One-Euro<br/>OSNet ReID re-attach]
   D --> E[Queue analyzer<br/>waiting / serving<br/>state machine]
   E --> F[Busy aggregator<br/>Low / Med / High]
   E --> G([Live dashboard])
@@ -135,6 +136,26 @@ track is briefly lost (and re-identified) are credited to the state held when it
 disappeared. Completed visits are logged as
 `id, entered_s, exited_s, wait_seconds, serving_seconds, outcome, rejected`.
 
+### Identity & re-id
+
+Frame-to-frame, a SORT core (Kalman motion + IoU) keeps each person on one id.
+When a track is lost — occlusion, or a full walk-out of frame — it is not deleted
+but moved to a TTL-bounded **lost gallery** (`--reid-seconds`). On reappearance,
+any detection the IoU step left unmatched is re-attached to a lost track by
+**appearance**: a learned **OSNet ReID embedding** (a 512-d descriptor per
+person), matched by nearest-neighbour against a small gallery of that track's
+recent embeddings rather than a single average — so a person seen from several
+angles still matches. Brief in-frame losses keep a spatial gate; a full exit
+drops it (appearance-only, at a stricter threshold), so someone can leave and
+re-enter **anywhere** in frame and reclaim their id. The result is one person =
+one id, which is what keeps arrival counts and per-person wait timers honest.
+
+Backends are swappable via `--reid-backend`: `osnet-x025` (default; a 0.9 MB
+MSMT17 ONNX, auto-downloaded once to `~/.cache/storepose/reid/`), `osnet-x1`
+(more accurate, weights not yet bundled), or `histogram` (a dependency-free HSV
+colour fallback). `--no-reid` turns re-attach off entirely. In the launcher TUI,
+the `reid` column cycles these per view.
+
 ### Occlusion-tolerant checkout re-assignment
 
 At a busy checkout a served person is often occluded and their track dropped — a
@@ -196,13 +217,33 @@ throughput against a single staffed lane.
 
 ## Live dashboard & recording
 
-Every run auto-starts a localhost dashboard (no extra dependencies) and opens it
-in your browser: occupancy, wait/serve moving averages, throughput, the busy
-badge, and the checkout-speed strip. On a file source the timeline is video time;
-on a webcam it is real time. Disable with `--no-dashboard`.
+Every run serves a live dashboard on localhost (default
+`http://127.0.0.1:8000/`, auto-opened in your browser). It streams a **live
+annotated video feed** — person boxes, COCO-17 skeletons, and zone polygons drawn
+as an SVG overlay that interpolates between frames — next to occupancy, wait/serve
+moving averages, throughput, the busy badge, and the checkout-speed strip. On a
+file source the timeline is video time; on a webcam it is real time. Disable with
+`--no-dashboard`.
+
+The UI is a **Next.js app** (`web/`) exported to static files and served by the
+Python process itself — no Node runtime at display time. The interactive launcher
+builds it for you when needed:
+
+```bash
+./video-run.sh        # builds web/out if stale, then launches and opens the browser
+```
+
+Running `main.py` directly serves the built dashboard when `web/out` exists;
+if it doesn't, the server falls back to a self-contained legacy HTML page (no
+crash). To build it once by hand, or to iterate on the UI with hot-reload:
+
+```bash
+cd web && npm install && npm run build   # one-time / after UI edits → web/out
+cd web && npm run dev                     # hot-reload on :3000, proxies /metrics+/stream to :8000
+```
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="storePose live dashboard: currently in line, at checkout, served, average times, and the occupancy chart" width="100%">
+  <img src="docs/assets/dashboard.png" alt="storePose live dashboard: live annotated feed, currently in line, at checkout, served, average times, and the occupancy chart" width="100%">
 </p>
 
 `--save-mp4` records the run as a single composite — annotated video on the left
@@ -278,7 +319,7 @@ Most-used flags:
 | `--iou-thr` | `0.3` | Min IoU to associate a detection to a track. |
 | `--max-overlap` | `0.5` | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-reid` | — | Disable appearance re-id. |
-| `--reid-seconds` | `15.0` | How long a lost track stays re-attachable. |
+| `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
 | `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.5, histogram 0.6). |
@@ -343,9 +384,12 @@ src/storepose/
   tracking/         SORT tracker: assignment, kalman, smoothing, track, appearance (histogram/osnet + reid_zoo)
   queue/            zone, analyzer (waiting/serving + occlusion re-assignment), editor
   busy/             occupancy timeline, aggregator, per-view calibration, report
-  dashboard/        localhost server, state, metrics, HTML page, recorded panel
+  dashboard/        localhost server, SSE video stream, metrics, recorded panel
   launcher.py       curses launcher  · launcher_core.py  (pure, testable model)
   eval/             ordinal metrics + ground-truth labeling helpers
+web/                Next.js dashboard UI (static export served by the Python server)
+scripts/
+  chunk_video.py    split a long video into fixed-size partNN.mp4 chunks
 docs/
   usage.md          copy-paste walkthrough
   problem-definition.md   the "how busy" definition + evaluation plan
@@ -355,7 +399,7 @@ docs/
 ## Testing
 
 ```bash
-uv run pytest          # 333 tests
+uv run pytest          # 375 tests
 ```
 
 Every feature is developed test-first against a written spec; the specs in

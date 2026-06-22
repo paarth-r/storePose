@@ -80,12 +80,25 @@ Full flag list: `uv run python main.py --help`, or the table in the
 ### Live dashboard
 
 Auto-starts at `http://127.0.0.1:8000/` (override `--dashboard-port`; disable with
-`--no-dashboard`) and opens in your browser. Live charts — occupancy, wait/serve
-moving averages, throughput, and the Mashgin-vs-non-Mashgin checkout comparison —
-fed by the running pipeline. A **Debug** tab lists each tracked person's
-classification (state, wait/serve timers, speed, line/POS/REG membership) for the
-current frame. Most useful with `--zone` / `--pos-zone`. The timeline is video time
-for a file source, real time for a webcam.
+`--no-dashboard`) and opens in your browser. It streams a **live annotated video
+feed** (person boxes, skeletons, and zone polygons drawn as an SVG overlay that
+interpolates between frames) plus live charts — occupancy, wait/serve moving
+averages, throughput, and the Mashgin-vs-non-Mashgin checkout comparison — fed by
+the running pipeline. A **Debug** tab (visible with `--debug`) lists each tracked
+person's classification (state, wait/serve timers, speed, line/POS/REG membership)
+for the current frame. Most useful with `--zone` / `--pos-zone`. The timeline is
+video time for a file source, real time for a webcam.
+
+The UI is a **Next.js app** in `web/`, exported to static files (`web/out`) and
+served by the Python process — no Node runtime needed at display time.
+`./video-run.sh` builds it automatically when stale. If `web/out` is missing the
+server falls back to a self-contained legacy HTML page (no crash). Build or hack
+on it directly:
+
+```bash
+cd web && npm install && npm run build   # one-time / after UI edits → web/out
+cd web && npm run dev                     # hot-reload on :3000, proxies /metrics + /stream to :8000
+```
 
 ### Frame-by-frame debug view (`--debug`)
 
@@ -109,6 +122,24 @@ The pipeline only ever moves **forward**; `←` is review-only over a rolling
 
 The Debug tab follows the **viewed** frame, so scrubbing back also rewinds the
 per-person table (the cumulative charts stay at the latest processed frame).
+
+### Splitting a long video into chunks
+
+For very long recordings, `scripts/chunk_video.py` splits a source into
+consecutive fixed-size clips (`partNN.mp4`, same fps/resolution), written to
+`<source-dir>/chunks/<stem>/` by default:
+
+```bash
+uv run python scripts/chunk_video.py --source videos/cumberland/clip.mp4
+uv run python scripts/chunk_video.py --source clip.mp4 --chunk-size 5000 --force
+```
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--source PATH` | — | Source video (a bare name resolves under `videos/`). |
+| `--chunk-size N` | `5000` | Frames per chunk. |
+| `--out-root PATH` | `<source-dir>/chunks` | Parent dir for the `<stem>/` chunk folder. |
+| `--force` | — | Overwrite a non-empty destination instead of erroring. |
 
 ---
 
