@@ -30,8 +30,15 @@ from storepose.busy.report import (
     write_levels,
 )
 from storepose.busy.types import METRICS, BusyThresholds
+from storepose.eval.cvat_import import (
+    parse_cvat_xml,
+    read_occupancy_csv,
+    sample_occupancy_gt,
+    write_occupancy_csv,
+)
 from storepose.eval.labeling import enumerate_windows, level_for_key, unlabeled
 from storepose.eval.metrics import evaluate
+from storepose.eval.occupancy_eval import occupancy_eval
 
 
 def _aggregate(args: argparse.Namespace) -> int:
@@ -82,6 +89,40 @@ def _eval(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
     print(evaluate(truth, pred).format())
+    return 0
+
+
+def _import_cvat(args: argparse.Namespace) -> int:
+    with open(args.export) as f:
+        tracks = parse_cvat_xml(f.read())
+    if not tracks:
+        print(f"No tracks in {args.export}; nothing to import.", file=sys.stderr)
+        return 1
+    samples = sample_occupancy_gt(tracks, fps=args.fps, step=args.step)
+    write_occupancy_csv(args.output, samples)
+    print(
+        f"{len(tracks)} track(s) -> {len(samples)} occupancy sample(s) "
+        f"at {args.step}s; wrote {args.output}"
+    )
+    return 0
+
+
+def _eval_occupancy(args: argparse.Namespace) -> int:
+    gt = read_occupancy_csv(args.gt)
+    waits = read_waits(args.waits)
+    if not waits:
+        print(f"No waits in {args.waits}; nothing to score.", file=sys.stderr)
+        return 1
+    pred = sample_occupancy(waits, step=args.step)
+    rep = occupancy_eval(gt, pred)
+    if rep.n == 0:
+        print(
+            "No overlapping timestamps between GT and predicted occupancy. "
+            "Did you use the same --step for import-cvat and the pipeline?",
+            file=sys.stderr,
+        )
+        return 1
+    print(rep.format())
     return 0
 
 
@@ -184,6 +225,26 @@ def _build_parser() -> argparse.ArgumentParser:
     e.add_argument("pred", help="Predicted busy CSV (from aggregate -o).")
     e.add_argument("truth", help="Ground-truth CSV (window_index,level).")
     e.set_defaults(func=_eval)
+
+    ic = sub.add_parser("import-cvat",
+                        help="CVAT point-track XML -> occupancy GT CSV")
+    ic.add_argument("export", help="Path to a CVAT-for-video XML export.")
+    ic.add_argument("--fps", type=float, required=True,
+                    help="Clip frame rate; maps CVAT frame numbers to seconds.")
+    ic.add_argument("--step", type=float, default=1.0,
+                    help="Occupancy sampling step in seconds (default: 1.0).")
+    ic.add_argument("-o", "--output", required=True, metavar="PATH",
+                    help="Occupancy GT CSV to write (t_s,occupancy).")
+    ic.set_defaults(func=_import_cvat)
+
+    eo = sub.add_parser("eval-occupancy",
+                        help="score predicted occupancy (from waits) vs. GT")
+    eo.add_argument("gt", help="Occupancy GT CSV (from import-cvat).")
+    eo.add_argument("waits", help="Wait-log CSV (from --wait-log).")
+    eo.add_argument("--step", type=float, default=1.0,
+                    help="Sampling step; must match the import-cvat --step "
+                         "(default: 1.0).")
+    eo.set_defaults(func=_eval_occupancy)
 
     lb = sub.add_parser("label", help="hand-label a video's windows -> truth CSV")
     lb.add_argument("video", help="Path to the video to label.")
