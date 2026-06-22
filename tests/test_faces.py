@@ -79,3 +79,39 @@ def test_blur_faces_returns_canvas_and_handles_empty():
     canvas = np.zeros((40, 40, 3), dtype=np.uint8)
     out = blur_faces(canvas, [], kpt_thr=0.5)
     assert out is canvas
+
+
+def _gradient_canvas(size=100):
+    """A canvas whose pixel value equals its column index (smooth horizontally)."""
+    cols = np.arange(size, dtype=np.uint8)
+    return np.tile(cols, (size, 1))[..., None].repeat(3, axis=2).copy()
+
+
+def test_blur_zones_pixelates_inside_polygon_only():
+    from storepose.faces import blur_zones
+    from storepose.queue.zone import Zone
+    canvas = _gradient_canvas(100)
+    before = canvas.copy()
+    zone = Zone([(20, 20), (60, 20), (60, 60), (20, 60)])  # a square contour
+    out = blur_zones(canvas, zone, blocks=4)
+    assert out is canvas
+    # a pixel inside the square is pixelated (changed); pixels outside are untouched
+    assert not np.array_equal(canvas[40, 40], before[40, 40])
+    assert np.array_equal(canvas[5, 5], before[5, 5])
+    assert np.array_equal(canvas[90, 90], before[90, 90])
+
+
+def test_blur_zones_none_is_noop():
+    from storepose.faces import blur_zones
+    canvas = np.zeros((10, 10, 3), dtype=np.uint8)
+    assert blur_zones(canvas, None) is canvas
+
+
+def test_blur_zones_skips_degenerate_contour():
+    from storepose.faces import blur_zones
+    from storepose.queue.zone import Zone
+    canvas = _gradient_canvas(40)
+    before = canvas.copy()
+    zone = Zone.from_polygons([[(1, 1), (2, 2)]])  # 2 points -> not a contour
+    blur_zones(canvas, zone)
+    assert np.array_equal(canvas, before)

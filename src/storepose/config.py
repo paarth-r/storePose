@@ -61,6 +61,9 @@ class AppConfig:
         define_pos_zone: Launch the editor for the POS zone and exit.
         alt_zone: Path to a non-Mashgin checkout zone JSON (the comparison).
         define_alt_zone: Launch the editor for the non-Mashgin checkout and exit.
+        blur_zone: Path to a censor-zone JSON; those polygon regions are pixelated
+            in the live view, recording, and browser feed.
+        define_blur_zone: Launch the editor for the censor/blur zone and exit.
         wait_enter_frames: Consecutive in-zone frames before WAITING.
         pos_enter_frames: Consecutive in-POS frames before SERVING (debounce).
         transit_speed: Reject walk-throughs: directional speed (body-heights/sec)
@@ -124,6 +127,8 @@ class AppConfig:
     alt_zone: str | None = None
     define_alt_zone: bool = False
     no_alt: bool = False
+    blur_zone: str | None = None
+    define_blur_zone: bool = False
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
     transit_speed: float = 0.4
@@ -394,6 +399,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive editor for the non-Mashgin checkout and exit.",
     )
     parser.add_argument(
+        "--blur-zone", default=None, metavar="PATH",
+        help="Censor-zone JSON; pixelate these polygon regions in the live view, "
+             "recording, and browser feed (e.g. to hide a monitor or doorway).",
+    )
+    parser.add_argument(
+        "--define-blur-zone", dest="define_blur_zone", action="store_true",
+        help="Launch the interactive editor for the censor/blur zone and exit.",
+    )
+    parser.add_argument(
         "--no-alt", dest="no_alt", action="store_true",
         help="Ignore the non-Mashgin (alt) checkout zone even if --alt-zone is "
              "given; disables the checkout comparison. Use when the staffed lane "
@@ -600,6 +614,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         alt_zone=args.alt_zone,
         define_alt_zone=args.define_alt_zone,
         no_alt=args.no_alt,
+        blur_zone=args.blur_zone,
+        define_blur_zone=args.define_blur_zone,
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
         transit_speed=args.transit_speed,

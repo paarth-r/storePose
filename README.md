@@ -103,7 +103,8 @@ arrow-key menu:
 
 Define the line and checkout areas once per fixed camera, then storePose tracks
 each visit through them. The interactive editor draws all zones in one session
-(`1` line, `2` Mashgin POS, `3` non-Mashgin lane; `n` new contour, `s` save):
+(`1` line, `2` Mashgin POS, `3` non-Mashgin lane, `4` censor/blur region; `n` new
+contour, `s` save):
 
 ```bash
 uv run python main.py --define-zone --source videos/clip.mp4
@@ -331,6 +332,8 @@ Most-used flags:
 | `--define-pos-zone` | — | Editor for the POS zone, then exit. |
 | `--alt-zone` | — | Non-Mashgin checkout zone; enables the comparison. |
 | `--define-alt-zone` | — | Editor for the non-Mashgin checkout, then exit. |
+| `--blur-zone` | — | Censor-zone JSON; pixelate these regions in the live view, recording, and browser feed. |
+| `--define-blur-zone` | — | Editor for the censor/blur zone, then exit. |
 | `--no-alt` | — | Ignore the alt zone even if set (too-occluded staffed lane). |
 | `--wait-enter-frames` | `5` | Consecutive in-zone frames before WAITING. |
 | `--pos-enter-frames` | `3` | Consecutive in-POS frames before SERVING. |

@@ -14,9 +14,12 @@ def main(argv: list[str] | None = None) -> int:
     config = from_args(argv)
     if config.define_zone:
         from storepose.queue.zone_editor import define_zones
-        saved = define_zones(config.source, config.zone, config.pos_zone, config.alt_zone)
-        flags = {"line": "--zone", "pos": "--pos-zone", "alt": "--alt-zone"}
-        parts = [f"{flags[t]} {saved[t]}" for t in ("line", "pos", "alt") if t in saved]
+        saved = define_zones(config.source, config.zone, config.pos_zone,
+                             config.alt_zone, config.blur_zone)
+        flags = {"line": "--zone", "pos": "--pos-zone", "alt": "--alt-zone",
+                 "blur": "--blur-zone"}
+        parts = [f"{flags[t]} {saved[t]}" for t in ("line", "pos", "alt", "blur")
+                 if t in saved]
         print("Run with: " + " ".join(parts) if parts else "Nothing saved.")
         return 0
     if config.define_pos_zone:
@@ -28,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
         from storepose.queue.zone_editor import define_zones
         saved = define_zones(config.source, alt_path=config.alt_zone, only="alt")
         print(f"Run with: --alt-zone {saved['alt']}" if "alt" in saved else "Nothing saved.")
+        return 0
+    if config.define_blur_zone:
+        from storepose.queue.zone_editor import define_zones
+        saved = define_zones(config.source, blur_path=config.blur_zone, only="blur")
+        print(f"Run with: --blur-zone {saved['blur']}" if "blur" in saved else "Nothing saved.")
         return 0
     if config.calibrate:
         from storepose.busy.calibrate import calibrate

@@ -80,3 +80,16 @@ def test_default_alt_zone_path():
     from storepose.queue.zone_editor import default_alt_zone_path
     assert default_alt_zone_path(0) == "zones/cam0_alt.json"
     assert default_alt_zone_path("videos/clip.mp4") == "zones/clip_alt.json"
+
+
+def test_default_blur_zone_path():
+    from storepose.queue.zone_editor import default_blur_zone_path
+    assert default_blur_zone_path(0) == "zones/cam0_blur.json"
+    assert default_blur_zone_path("videos/clip.mp4") == "zones/clip_blur.json"
+
+
+def test_blur_zone_flags_parse():
+    assert from_args(["--blur-zone", "zones/x_blur.json"]).blur_zone == "zones/x_blur.json"
+    assert from_args(["--define-blur-zone"]).define_blur_zone is True
+    assert from_args([]).blur_zone is None
+    assert from_args([]).define_blur_zone is False
