@@ -59,3 +59,33 @@ def parse_cvat_xml(text: str) -> list[GtTrack]:
             GtTrack(id=int(tr.get("id", "0")), label=tr.get("label", ""), shapes=shapes)
         )
     return tracks
+
+
+def _active_shape(track: GtTrack, frame: int) -> GtShape | None:
+    """The last keyframe at or before ``frame`` (the one that governs state)."""
+    active: GtShape | None = None
+    for s in track.shapes:
+        if s.frame <= frame:
+            active = s
+        else:
+            break
+    return active
+
+
+def present_at(track: GtTrack, frame: int) -> bool:
+    """True if the track is visible at ``frame`` (governing keyframe not outside)."""
+    active = _active_shape(track, frame)
+    return active is not None and not active.outside
+
+
+def membership_at(track: GtTrack, frame: int) -> str | None:
+    """The ``membership`` attribute while present, else ``None``."""
+    active = _active_shape(track, frame)
+    if active is None or active.outside:
+        return None
+    return active.attrs.get("membership")
+
+
+def occupancy_gt_at(tracks: list[GtTrack], frame: int) -> int:
+    """Number of present, in-line people at ``frame``."""
+    return sum(1 for t in tracks if membership_at(t, frame) == "in_line")
