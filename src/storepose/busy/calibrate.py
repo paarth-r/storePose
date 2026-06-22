@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from datetime import datetime
 from pathlib import Path
 from statistics import median
@@ -150,6 +151,8 @@ def calibrate(config: AppConfig) -> dict:
             sub_window_seconds=sub,
         )
 
+        total = source.frame_count
+        started = time.perf_counter()
         clock = 0.0
         n = 0
         for frame in source:
@@ -169,7 +172,11 @@ def calibrate(config: AppConfig) -> dict:
                     print("  aborted by user")
                     break
             elif n % 100 == 0:
-                print(f"  ...{n} frames ({clock:.0f}s)")
+                wall = time.perf_counter() - started
+                rate = n / wall if wall > 0 else 0.0
+                pct = f" {100 * n / total:.0f}%" if total else ""
+                print(f"  ...{n}{('/' + str(total)) if total else ''} frames{pct} "
+                      f"| {wall:.0f}s wall @ {rate:.1f} fps (video t={clock:.0f}s)")
 
         if verbose:
             import cv2
