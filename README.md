@@ -54,7 +54,7 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 flowchart LR
   A([Camera / video]) --> B[YOLOX<br/>person detection]
   B --> C[RTMPose<br/>17 keypoints]
-  C --> D[SORT tracker<br/>Kalman · IoU · One-Euro<br/>appearance re-id]
+  C --> D[SORT tracker<br/>Kalman · IoU · One-Euro<br/>OSNet ReID re-attach]
   D --> E[Queue analyzer<br/>waiting / serving<br/>state machine]
   E --> F[Busy aggregator<br/>Low / Med / High]
   E --> G([Live dashboard])
@@ -134,6 +134,26 @@ Time is attributed to whichever state the person is in each frame; gaps where a
 track is briefly lost (and re-identified) are credited to the state held when it
 disappeared. Completed visits are logged as
 `id, entered_s, exited_s, wait_seconds, serving_seconds, outcome, rejected`.
+
+### Identity & re-id
+
+Frame-to-frame, a SORT core (Kalman motion + IoU) keeps each person on one id.
+When a track is lost — occlusion, or a full walk-out of frame — it is not deleted
+but moved to a TTL-bounded **lost gallery** (`--reid-seconds`). On reappearance,
+any detection the IoU step left unmatched is re-attached to a lost track by
+**appearance**: a learned **OSNet ReID embedding** (a 512-d descriptor per
+person), matched by nearest-neighbour against a small gallery of that track's
+recent embeddings rather than a single average — so a person seen from several
+angles still matches. Brief in-frame losses keep a spatial gate; a full exit
+drops it (appearance-only, at a stricter threshold), so someone can leave and
+re-enter **anywhere** in frame and reclaim their id. The result is one person =
+one id, which is what keeps arrival counts and per-person wait timers honest.
+
+Backends are swappable via `--reid-backend`: `osnet-x025` (default; a 0.9 MB
+MSMT17 ONNX, auto-downloaded once to `~/.cache/storepose/reid/`), `osnet-x1`
+(more accurate, weights not yet bundled), or `histogram` (a dependency-free HSV
+colour fallback). `--no-reid` turns re-attach off entirely. In the launcher TUI,
+the `reid` column cycles these per view.
 
 ### Occlusion-tolerant checkout re-assignment
 
@@ -278,7 +298,7 @@ Most-used flags:
 | `--iou-thr` | `0.3` | Min IoU to associate a detection to a track. |
 | `--max-overlap` | `0.5` | Drop a coasting ghost overlapping another box by more than this. |
 | `--no-reid` | — | Disable appearance re-id. |
-| `--reid-seconds` | `15.0` | How long a lost track stays re-attachable. |
+| `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
 | `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.5, histogram 0.6). |
