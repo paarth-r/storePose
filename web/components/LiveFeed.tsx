@@ -169,13 +169,17 @@ export function LiveFeed() {
             const color = stateColor(p.state);
             const t = p.state === "serving" || p.state === "serving_other" ? p.serve : p.wait;
             const showTime = p.state !== "tracked" && p.state !== "out" && t > 0.5;
+            // keep the pill on-screen: sit above the box, but drop just inside it
+            // when the box hugs the top edge so the label never clips.
+            const above = y1 / fh > 0.07;
             return (
               <div
                 key={p.id}
-                className="pointer-events-none absolute flex -translate-y-[calc(100%+5px)] items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-[3px] text-[11px] font-medium tabular-nums backdrop-blur-sm"
+                className="pointer-events-none absolute flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-[3px] text-[11px] font-medium tabular-nums backdrop-blur-sm"
                 style={{
                   left: `${(x1 / fw) * 100}%`,
                   top: `${(y1 / fh) * 100}%`,
+                  transform: above ? "translateY(calc(-100% - 5px))" : "translateY(5px)",
                   background: "rgba(11,12,15,0.72)",
                   color: "#f4f4f5",
                   boxShadow: `inset 0 0 0 1px ${color}55`,
