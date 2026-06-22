@@ -189,7 +189,8 @@ def test_reid_defaults_on():
     cfg = from_args([])
     assert cfg.reid is True
     assert cfg.reid_seconds == 10.0
-    assert cfg.reid_thr == 0.6
+    assert cfg.reid_backend == "osnet-x1"
+    assert cfg.reid_thr is None
 
 
 def test_no_reid_flag_disables():
@@ -201,13 +202,36 @@ def test_reid_flags_parse():
     assert cfg.reid_seconds == 8.0 and cfg.reid_thr == 0.4
 
 
+def test_reid_backend_choice_parses():
+    assert from_args(["--reid-backend", "histogram"]).reid_backend == "histogram"
+    assert from_args(["--reid-backend", "osnet-x025"]).reid_backend == "osnet-x025"
+
+
+def test_reid_weights_override_parses():
+    assert from_args(["--reid-weights", "/tmp/x.onnx"]).reid_weights == "/tmp/x.onnx"
+
+
+def test_reid_backend_must_be_known():
+    import pytest
+    with pytest.raises(ValueError):
+        AppConfig(reid_backend="osnet-x99")
+
+
+def test_reid_thr_for_resolves_per_backend():
+    from storepose.config import reid_thr_for
+    assert reid_thr_for("osnet-x1", None) == 0.5
+    assert reid_thr_for("osnet-x025", None) == 0.5
+    assert reid_thr_for("histogram", None) == 0.6
+    assert reid_thr_for("osnet-x1", 0.3) == 0.3    # explicit override wins
+
+
 def test_reid_seconds_must_be_nonnegative():
     import pytest
     with pytest.raises(ValueError):
         AppConfig(reid_seconds=-1.0)
 
 
-def test_reid_thr_must_be_in_range():
+def test_reid_thr_override_validates_range():
     import pytest
     with pytest.raises(ValueError):
         AppConfig(reid_thr=2.0)
