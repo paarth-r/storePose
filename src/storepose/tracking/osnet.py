@@ -32,7 +32,22 @@ class OsnetAppearance:
         self._session = ort.InferenceSession(
             weights_path, providers=_providers(device)
         )
-        self._input = self._session.get_inputs()[0].name
+        inp = self._session.get_inputs()[0]
+        self._input = inp.name
+        # Some OSNet ONNX exports fix the batch dim and emit wrong embeddings for
+        # larger batches (deep-person-reid issue #585). If the batch axis is not
+        # dynamic, run one crop at a time so embeddings stay correct.
+        shape = getattr(inp, "shape", None)
+        self._dynamic_batch = not (shape and isinstance(shape[0], int))
+
+    def _infer(self, batch: np.ndarray) -> np.ndarray:
+        if self._dynamic_batch:
+            emb = self._session.run(None, {self._input: batch})[0]
+        else:
+            rows = [self._session.run(None, {self._input: batch[i:i + 1]})[0]
+                    for i in range(len(batch))]
+            emb = np.concatenate(rows, axis=0)
+        return np.asarray(emb, np.float32)
 
     def _crop(self, frame, box):
         h, w = frame.shape[:2]
@@ -64,7 +79,7 @@ class OsnetAppearance:
         if not crops:
             return out
         batch = np.stack(crops).astype(np.float32)
-        emb = np.asarray(self._session.run(None, {self._input: batch})[0], np.float32)
+        emb = self._infer(batch)
         norms = np.linalg.norm(emb, axis=1, keepdims=True)
         norms[norms == 0] = 1.0
         emb = emb / norms
