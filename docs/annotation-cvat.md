@@ -129,7 +129,7 @@ uv run python busy_report.py eval-occupancy gt_occupancy.csv waits.csv --step 1
 - `waits.csv` — the predicted wait log from step 3.
 - `--step 1` — **CRITICAL: must match the `--step` value from the import-cvat command, or the timelines will not align and the metrics will be meaningless.**
 
-The output includes MAE (mean absolute error), bias (systematic over/under-counting), Pearson correlation, and a confusion table for inspection.
+The output includes MAE (mean absolute error), bias (systematic over/under-counting), and Pearson correlation.
 
 ### CRITICAL ALIGNMENT REQUIREMENTS
 

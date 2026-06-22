@@ -93,8 +93,15 @@ def _eval(args: argparse.Namespace) -> int:
 
 
 def _import_cvat(args: argparse.Namespace) -> int:
-    with open(args.export) as f:
-        tracks = parse_cvat_xml(f.read())
+    try:
+        with open(args.export) as f:
+            tracks = parse_cvat_xml(f.read())
+    except FileNotFoundError:
+        print(f"File not found: {args.export}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Failed to parse {args.export}: {exc}", file=sys.stderr)
+        return 1
     if not tracks:
         print(f"No tracks in {args.export}; nothing to import.", file=sys.stderr)
         return 1

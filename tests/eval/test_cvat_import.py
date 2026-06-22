@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from storepose.eval.cvat_import import (
     GtShape,
     GtTrack,
@@ -89,14 +91,12 @@ def test_sample_occupancy_gt_grid_and_values():
     # fps=10 -> 1s == 10 frames; sample every 1s over [0, t_end)
     samples = sample_occupancy_gt(tracks, fps=10.0, step=1.0)
     by_t = dict(samples)
-    assert by_t[0.0] == 0    # frame 0
-    # frame 10 is exactly the first keyframe; round(1.0*10)=10 -> present in_line
-    assert by_t[1.0] == 1 or by_t[2.0] == 1  # presence visible at/after entry
+    assert by_t[0.0] == 0    # frame 0, before any keyframe
+    assert by_t[1.0] == 1    # frame 10 = first in_line keyframe; round(1.0*10)=10
 
 
 def test_sample_occupancy_gt_validates_inputs():
     tracks = parse_cvat_xml(SAMPLE_XML)
-    import pytest
     with pytest.raises(ValueError):
         sample_occupancy_gt(tracks, fps=0.0)
     with pytest.raises(ValueError):

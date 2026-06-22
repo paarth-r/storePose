@@ -24,6 +24,8 @@ class GtShape:
     x: float
     y: float
     attrs: dict[str, str]
+    # attrs is a mutable dict; frozen=True does not make this hashable
+    __hash__ = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -115,11 +117,14 @@ def sample_occupancy_gt(
     if t_end is None:
         t_end = max_frame / fps
     out: list[tuple[float, int]] = []
-    t = t_start
-    while t < t_end:
+    i = 0
+    while True:
+        t = t_start + i * step
+        if t >= t_end:
+            break
         frame = round(t * fps)
         out.append((t, occupancy_gt_at(tracks, frame)))
-        t += step
+        i += 1
     return out
 
 
