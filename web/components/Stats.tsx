@@ -66,23 +66,41 @@ export function CheckoutEdge({ m }: { m: Metrics | null }) {
   const hasBoth = (c?.mashgin_n ?? 0) > 0 && (c?.other_n ?? 0) > 0;
   const max = Math.max(mashEff, other, 0.001);
   const faster = delta > 0;
+  // "×N faster": staffed time ÷ self-checkout time, rounded up — one staffed
+  // cashier's worth of throughput becomes N self-checkout customers.
+  const ratio = mashEff > 0 ? other / mashEff : 0;
+  const times = Math.max(1, Math.ceil(ratio));
 
   return (
     <Card className="p-5">
       <CardTitle>Checkout edge</CardTitle>
       {hasBoth ? (
         <>
-          <div className="flex items-baseline gap-2">
-            <span className="tnum text-[2.3rem] font-semibold leading-none tracking-[-0.02em] text-ink">
-              {fmtSeconds(Math.abs(delta))}
-            </span>
-            <span className="text-[0.82rem] font-medium" style={{ color: faster ? "var(--color-go)" : "var(--color-busy)" }}>
-              {faster ? "faster" : "slower"} / customer
-            </span>
-          </div>
-          <p className="mt-1 text-[0.76rem] text-faint">
-            Self-checkout{(c?.num_mashgins ?? 1) > 1 ? ` ×${c?.num_mashgins}` : ""} vs staffed lane
-          </p>
+          {faster ? (
+            <>
+              <div className="text-[1.7rem] font-semibold leading-tight tracking-[-0.01em] text-ink">
+                Turns one cashier into{" "}
+                <span className="tnum" style={{ color: "var(--color-go)" }}>
+                  {times}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[0.78rem] text-faint">{times}× faster than a staffed lane</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="tnum text-[2.3rem] font-semibold leading-none tracking-[-0.02em] text-ink">
+                  {fmtSeconds(Math.abs(delta))}
+                </span>
+                <span className="text-[0.82rem] font-medium" style={{ color: "var(--color-busy)" }}>
+                  slower / customer
+                </span>
+              </div>
+              <p className="mt-1 text-[0.76rem] text-faint">
+                Self-checkout{(c?.num_mashgins ?? 1) > 1 ? ` ×${c?.num_mashgins}` : ""} vs staffed lane
+              </p>
+            </>
+          )}
           <div className="mt-4 space-y-2.5">
             <Bar label="Self-checkout" value={mashEff} max={max} color="var(--color-go)" />
             <Bar label="Staffed lane" value={other} max={max} color="var(--color-faint)" />
