@@ -21,10 +21,15 @@ class ReidSpec:
     filename: str
 
 
-# Pinned in the "obtain weights" step. Both 512-d embedding models.
+# Pinned 512-d MSMT17 embedding models. The exports fix the ONNX batch dim
+# (OsnetAppearance chunk-and-pads to it). osnet-x1 is not yet pinned.
 SPECS: dict[str, ReidSpec] = {
     "osnet-x1": ReidSpec(url="", sha256="", filename="osnet_x1_0.onnx"),
-    "osnet-x025": ReidSpec(url="", sha256="", filename="osnet_x0_25.onnx"),
+    "osnet-x025": ReidSpec(
+        url="https://huggingface.co/anriha/osnet_x0_25_msmt17/resolve/main/osnet_x0_25_msmt17.onnx",
+        sha256="e78604f4ccda49b8f41cd0f8f7303800ce75d2361895ebb0729513c1bf53d277",
+        filename="osnet_x0_25_msmt17.onnx",
+    ),
 }
 
 
