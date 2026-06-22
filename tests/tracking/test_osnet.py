@@ -41,6 +41,11 @@ class _FixedBatchSession(_FakeSession):
     batch_dim = 1
 
 
+class _Fixed16Session(_FakeSession):
+    """Fake whose ONNX input fixes the batch dim to 16 (the anriha export shape)."""
+    batch_dim = 16
+
+
 @pytest.fixture
 def app(monkeypatch):
     monkeypatch.setattr(osnet_mod.ort, "InferenceSession", _FakeSession)
@@ -105,3 +110,14 @@ def test_fixed_batch_runs_per_crop(monkeypatch):
     assert len(descs) == 2 and all(d is not None for d in descs)
     # fixed batch dim -> one run per crop (issue #585 safety), never a 2-row batch
     assert app._session.calls == [1, 1]
+
+
+def test_fixed_batch_16_pads_partial_group(monkeypatch):
+    monkeypatch.setattr(osnet_mod.ort, "InferenceSession", _Fixed16Session)
+    app = OsnetAppearance("unused.onnx", device="cpu")
+    frame = np.full((300, 300, 3), 127, np.uint8)
+    boxes = [np.array([10, 10, 80, 200], float) for _ in range(3)]
+    descs = app.extract_batch(frame, boxes, [None] * 3, [None] * 3)
+    # fixed batch 16: pad the 3 crops up to 16, run once, slice back to 3
+    assert len(descs) == 3 and all(d is not None for d in descs)
+    assert app._session.calls == [16]

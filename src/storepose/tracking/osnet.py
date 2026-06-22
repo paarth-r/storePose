@@ -34,20 +34,29 @@ class OsnetAppearance:
         )
         inp = self._session.get_inputs()[0]
         self._input = inp.name
-        # Some OSNet ONNX exports fix the batch dim and emit wrong embeddings for
-        # larger batches (deep-person-reid issue #585). If the batch axis is not
-        # dynamic, run one crop at a time so embeddings stay correct.
+        # OSNet ONNX exports vary: some fix the batch dim (commonly 1 or 16) and
+        # only accept exactly that many rows -- and a batch-1 export can emit wrong
+        # embeddings for larger batches (deep-person-reid issue #585). Detect a
+        # fixed batch size M and feed exactly M rows per call (padding the last
+        # partial group), so any export runs correctly.
         shape = getattr(inp, "shape", None)
-        self._dynamic_batch = not (shape and isinstance(shape[0], int))
+        bdim = shape[0] if shape else None
+        self._fixed_batch = bdim if isinstance(bdim, int) and bdim >= 1 else None
 
     def _infer(self, batch: np.ndarray) -> np.ndarray:
-        if self._dynamic_batch:
-            emb = self._session.run(None, {self._input: batch})[0]
-        else:
-            rows = [self._session.run(None, {self._input: batch[i:i + 1]})[0]
-                    for i in range(len(batch))]
-            emb = np.concatenate(rows, axis=0)
-        return np.asarray(emb, np.float32)
+        if self._fixed_batch is None:
+            return np.asarray(self._session.run(None, {self._input: batch})[0], np.float32)
+        m = self._fixed_batch
+        rows = []
+        for i in range(0, len(batch), m):
+            chunk = batch[i:i + m]
+            k = len(chunk)
+            if k < m:  # pad up to the fixed batch size, then drop the padding rows
+                pad = np.zeros((m - k, *chunk.shape[1:]), np.float32)
+                chunk = np.concatenate([chunk, pad], axis=0)
+            out = np.asarray(self._session.run(None, {self._input: chunk})[0], np.float32)
+            rows.append(out[:k])
+        return np.concatenate(rows, axis=0)
 
     def _crop(self, frame, box):
         h, w = frame.shape[:2]
