@@ -57,6 +57,18 @@ class VideoSource:
         fps = self._cap.get(cv2.CAP_PROP_FPS)
         return fps if fps and fps > 0 else None
 
+    @property
+    def frame_count(self) -> int | None:
+        """Total frames if the backend reports a positive count (files), else None.
+
+        Live cameras and some containers report 0/negative; callers treat None as
+        "unknown" and skip progress percentages.
+        """
+        if self._cap is None:
+            return None
+        n = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        return n if n > 0 else None
+
     def __iter__(self) -> Iterator[np.ndarray]:
         assert self._cap is not None, "VideoSource must be used as a context manager"
         while True:
