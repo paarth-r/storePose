@@ -120,6 +120,7 @@ class AppConfig:
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
+    predict_drift: bool = True
     zone: str | None = None
     define_zone: bool = False
     pos_zone: str | None = None
@@ -367,6 +368,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable One-Euro keypoint smoothing.",
     )
     parser.add_argument(
+        "--no-predict-drift", dest="predict_drift", action="store_false",
+        help="Hold a coasting track at its last detected box instead of "
+             "extrapolating along Kalman velocity (less box drift / fewer swaps).",
+    )
+    parser.add_argument(
         "--smooth-cutoff", type=float, default=1.0,
         help="One-Euro min_cutoff; lower = smoother/laggier (default: 1.0).",
     )
@@ -605,6 +611,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_weights=args.reid_weights,
         reid_thr=args.reid_thr,
         smooth=args.smooth,
+        predict_drift=args.predict_drift,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
         zone=args.zone,

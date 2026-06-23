@@ -38,10 +38,12 @@ class Track:
         beta: float,
         appearance_mem: object | None = None,
         det_score: float | None = None,
+        drift: bool = True,
     ):
         self.id = track_id
         self.det_score = det_score  # detector confidence of the last detection
         self.kalman = KalmanBoxTracker(box)
+        self._drift = drift  # False: a coasting track's box stays at last_box
         self.last_box = np.asarray(box, float)  # last *detected* box (not coasted)
         self.hits = 1
         self.time_since_update = 0
@@ -97,6 +99,11 @@ class Track:
 
     @property
     def box(self) -> np.ndarray:
+        # With predictive drift off, a coasting track holds its last detected
+        # position instead of extrapolating along Kalman velocity (which would
+        # drift the box away from the person and cause mis-association/swaps).
+        if not self._drift and self.coasting:
+            return self.last_box
         return self.kalman.box
 
     @property

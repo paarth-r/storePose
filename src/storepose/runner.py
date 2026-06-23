@@ -81,6 +81,7 @@ def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
         min_cutoff=config.smooth_cutoff, beta=config.smooth_beta,
         appearance=appearance, reid=config.reid,
         reid_max_age=reid_max_age, reid_thr=reid_thr_for(backend, config.reid_thr),
+        predict_drift=config.predict_drift,
     )
 
 

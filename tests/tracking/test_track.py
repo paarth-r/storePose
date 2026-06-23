@@ -46,6 +46,31 @@ def test_predict_marks_coasting():
     assert t.time_since_update == 0
 
 
+def _moving_track(drift: bool) -> Track:
+    # Establish steady rightward motion: detections at x=0,10,20 over 3 frames.
+    t = Track(0, np.array([0, 0, 10, 20], float), None, None, 1 / 30,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.007, drift=drift)
+    t.predict(); t.update(np.array([10, 0, 20, 20], float), None, None, 1 / 30)
+    t.predict(); t.update(np.array([20, 0, 30, 20], float), None, None, 1 / 30)
+    return t
+
+
+def test_no_drift_freezes_coasting_box_at_last_detection():
+    t = _moving_track(drift=False)
+    last = t.last_box.copy()
+    t.predict()  # coast: no detection this frame
+    assert t.coasting is True
+    np.testing.assert_allclose(t.box, last)  # box must not drift forward
+
+
+def test_drift_advances_coasting_box_forward():
+    t = _moving_track(drift=True)
+    last_cx = (t.last_box[0] + t.last_box[2]) / 2.0
+    t.predict()  # coast: Kalman extrapolates along the established velocity
+    coast_cx = (t.box[0] + t.box[2]) / 2.0
+    assert coast_cx > last_cx
+
+
 def _track(box, appearance_mem=None):
     return Track(0, np.array(box, float), None, None, 1 / 30,
                  min_hits=1, smooth=False, min_cutoff=1.0, beta=0.007,

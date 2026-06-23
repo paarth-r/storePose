@@ -88,6 +88,7 @@ class MultiObjectTracker:
         reid: bool = False,
         reid_max_age: int = 150,
         reid_thr: float = 0.6,
+        predict_drift: bool = True,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -100,6 +101,7 @@ class MultiObjectTracker:
         self._reid = reid
         self._reid_max_age = reid_max_age
         self._reid_thr = reid_thr
+        self._predict_drift = predict_drift
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
         self._next_id = 0
@@ -160,6 +162,7 @@ class MultiObjectTracker:
                     min_hits=self.min_hits, smooth=self.smooth,
                     min_cutoff=self.min_cutoff, beta=self.beta,
                     appearance_mem=mem, det_score=float(det_scores[d]),
+                    drift=self._predict_drift,
                 )
             )
             self._next_id += 1

@@ -151,7 +151,8 @@ def _export_cvat(args: argparse.Namespace) -> int:
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     limit = total if args.max_frames <= 0 else min(total, args.max_frames)
 
-    config = AppConfig(source=args.source, mode=args.mode, device=args.device)
+    config = AppConfig(source=args.source, mode=args.mode, device=args.device,
+                       predict_drift=args.predict_drift)
     print(f"Loading models (mode={args.mode}, device={args.device})...")
     pipeline = PosePipeline(config)
     tracker = build_tracker(config, fps)
@@ -325,7 +326,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     choices=("in_line", "bystander"),
                     help="Pre-filled membership for every track; the reviewer "
                          "flips the exceptions (default: in_line).")
-    ex.set_defaults(func=_export_cvat)
+    ex.add_argument("--no-predict-drift", dest="predict_drift", action="store_false",
+                    help="Hold coasting tracks at their last detected box instead "
+                         "of extrapolating Kalman velocity (less drift / fewer swaps).")
+    ex.set_defaults(func=_export_cvat, predict_drift=True)
 
     lb = sub.add_parser("label", help="hand-label a video's windows -> truth CSV")
     lb.add_argument("video", help="Path to the video to label.")
