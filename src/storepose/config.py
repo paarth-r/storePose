@@ -118,7 +118,7 @@ class AppConfig:
     reid_weights: str | None = None
     reid_thr: float | None = None
     reid_assoc_weight: float = 0.4
-    reid_assoc_floor: float = 0.3
+    reid_assoc_floor: float = 0.6
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -376,9 +376,9 @@ def _build_parser() -> argparse.ArgumentParser:
              "(0 = IoU only; fuses 'looks like' into the match). Default 0.4.",
     )
     parser.add_argument(
-        "--reid-assoc-floor", type=float, default=0.3,
+        "--reid-assoc-floor", type=float, default=0.6,
         help="Reject a primary match whose appearance similarity is below this, "
-             "even at high IoU (stops a person matching onto a prop). Default 0.3.",
+             "even at high IoU (stops a person matching onto a prop; measured prop-vs-person <=0.53, self-sim >=0.77). Default 0.6.",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",

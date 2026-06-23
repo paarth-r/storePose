@@ -160,7 +160,7 @@ def test_stationary_filter_on_by_default_zero_disables():
 
 def test_appearance_fused_association_on_by_default():
     c = from_args([])
-    assert c.reid_assoc_weight == 0.4 and c.reid_assoc_floor == 0.3
+    assert c.reid_assoc_weight == 0.4 and c.reid_assoc_floor == 0.6
     assert from_args(["--reid-assoc-weight", "0"]).reid_assoc_weight == 0.0
 
 
