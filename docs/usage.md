@@ -47,9 +47,9 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 
 | Layer | Shown when | What you see |
 |-------|-----------|--------------|
-| Boxes + skeletons | always | Per-person box with a stable `ID n` and a colored COCO skeleton. Skeleton is hidden while a box is *coasting* (predicted through an occlusion). |
+| Boxes + skeletons | always | Per-person box with a stable `ID n` and a colored COCO skeleton. A track with no detection this frame is dropped (no coasting box) unless `--coast` is set. |
 | FPS | always (hide with `--no-fps`) | Rolling average framerate, top-left. |
-| Detector confidence | `--conf` | Each person's YOLOX detection score (e.g. `ID 3  0.91`) next to their box/ID. Hidden while coasting (no fresh detection). |
+| Detector confidence | `--conf` | Each person's YOLOX detection score (e.g. `ID 3  0.91`) next to their box/ID, plus a brief `RE-ID <sim>` tag when a returning person is re-identified. |
 | Queue | `--zone PATH` | The zone polygon (orange); a rising fill + `%` for candidates and a full fill + `WAIT n.n s` for people in line, each in that person's **persistent id color**; an `in line: N` header count. |
 | Busy badge | `--busy` (needs `--zone`) | A `LOW / MEDIUM / HIGH` badge, the current metric value, and a countdown to the end of the active window. |
 
@@ -63,8 +63,11 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--det-overlap` | `0.8` | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing / ankle test. |
 | `--no-fps` | — | Hide the FPS overlay. |
-| `--conf` | — | Overlay each person's detector confidence next to their box/ID. |
+| `--conf` | — | Overlay each person's detector confidence, plus a brief `RE-ID <sim>` tag when a returning person is re-identified. |
 | `--no-track` | — | Raw per-frame boxes, no stable IDs (disables queue/busy). |
+| `--coast` | — | Keep drawing a lost track's held box for up to `--hold-seconds`. Off by default (an undetected track is dropped; a returning detection re-attaches its id). |
+| `--predict-drift` | — | Extrapolate a coasting box along Kalman velocity (off by default; the box holds its last detected position). |
+| `--stationary-seconds` | `20` | Suppress a track that hasn't moved for this long (a fixed prop); also excludes it from re-id. `0` disables. |
 | `--no-reid` | — | Disable appearance re-id; a returning person gets a new id. |
 | `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. The launcher's `reid` column cycles `osnet-x025 → osnet-x1 → histogram → off` per view. |

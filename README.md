@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/python-3.12-5878ff.svg" alt="Python 3.12">
   <img src="https://img.shields.io/badge/runtime-ONNX%20Runtime-0e1421.svg" alt="ONNX Runtime">
   <img src="https://img.shields.io/badge/pose-RTMPose%20%2B%20YOLOX-46c83c.svg" alt="RTMPose + YOLOX">
-  <img src="https://img.shields.io/badge/tests-375%20passing-34d399.svg" alt="375 tests passing">
+  <img src="https://img.shields.io/badge/tests-427%20passing-34d399.svg" alt="427 tests passing">
 </p>
 
 **storePose** turns ordinary store-camera video into a live answer to one operational
@@ -46,7 +46,7 @@ pain (pose runs on [`rtmlib`](https://github.com/Tau-J/rtmlib) + ONNX Runtime).
 - **Privacy by default** — every face is pixelated (localized from the face
   keypoints, falling back to the top of the box) in the live view, recordings,
   and debug frames; opt out with `--no-blur-faces`.
-- **Reproducible & tested** — 375 unit tests; every feature has a design spec in
+- **Reproducible & tested** — 427 unit tests; every feature has a design spec in
   [`docs/superpowers/specs/`](docs/superpowers/specs).
 
 ## Pipeline
@@ -146,10 +146,13 @@ any detection the IoU step left unmatched is re-attached to a lost track by
 **appearance**: a learned **OSNet ReID embedding** (a 512-d descriptor per
 person), matched by nearest-neighbour against a small gallery of that track's
 recent embeddings rather than a single average — so a person seen from several
-angles still matches. Brief in-frame losses keep a spatial gate; a full exit
-drops it (appearance-only, at a stricter threshold), so someone can leave and
-re-enter **anywhere** in frame and reclaim their id. The result is one person =
-one id, which is what keeps arrival counts and per-person wait timers honest.
+angles still matches. A track with no detection this frame is **not drawn** (no
+coasting/held box by default — `--coast` re-enables it); it lingers internally so
+a returning detection re-attaches by **range + time + appearance** rather than by
+a held box. The appearance floor is strict (`--reid-thr`, osnet **0.8**), and a
+**stationary prop never enters the re-id gallery** — so a moving person is never
+re-identified onto a fixed object. The result is one person = one id, which is
+what keeps arrival counts and per-person wait timers honest.
 
 Backends are swappable via `--reid-backend`: `osnet-x025` (default; a 0.9 MB
 MSMT17 ONNX, auto-downloaded once to `~/.cache/storepose/reid/`), `osnet-x1`
@@ -309,13 +312,17 @@ Most-used flags:
 | `--det-conf` | `0.5` | Person-detection confidence threshold. |
 | `--det-overlap` | `0.8` | Drop a box more than this fraction inside a larger one. |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing. |
-| `--conf` | — | Overlay each person's detector confidence. |
+| `--conf` | — | Overlay each person's detector confidence, plus a brief `RE-ID <sim>` tag when a returning person is re-identified. |
 | `--no-fps` | — | Hide the FPS overlay. |
 | `--no-blur-faces` | — | Disable face pixelation (on by default). |
 | `--save PATH` | — | Write annotated output to this `.mp4` path. |
 | `--save-mp4` | — | Auto-name a composite video+dashboard `.mp4` into `runs/`. |
 | `--no-track` | — | Disable tracking; raw per-frame detections. |
-| `--hold-seconds` | `1.5` | How long a lost person's box keeps coasting. |
+| `--hold-seconds` | `1.5` | How long a lost track stays alive internally for re-attach (seconds). |
+| `--coast` | — | Keep drawing a lost track's held box for up to `--hold-seconds`. Off by default (an undetected track is dropped; a returning detection re-attaches its id). |
+| `--predict-drift` | — | Extrapolate a coasting box along Kalman velocity. Off by default (the box holds its last detected position, avoiding drift/mis-association). |
+| `--stationary-seconds` | `20` | Suppress a track that hasn't moved beyond `--stationary-radius` for this long (a fixed prop); also excluded from re-id. `0` disables. |
+| `--stationary-radius` | `0.03` | Stationary-filter movement radius, as a fraction of the frame diagonal. |
 | `--min-hits` | `3` | Detections before a track is confirmed/drawn. |
 | `--iou-thr` | `0.3` | Min IoU to associate a detection to a track. |
 | `--max-overlap` | `0.5` | Drop a coasting ghost overlapping another box by more than this. |
@@ -402,7 +409,7 @@ docs/
 ## Testing
 
 ```bash
-uv run pytest          # 375 tests
+uv run pytest          # 427 tests
 ```
 
 Every feature is developed test-first against a written spec; the specs in
