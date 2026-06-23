@@ -82,6 +82,40 @@ def test_no_coast_keeps_id_when_detection_returns():
     assert len(out) == 1 and out[0].id == 0              # same id, no new track
 
 
+def test_stationary_track_suppressed_after_window():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False,
+                            stationary_seconds=1.0, stationary_radius=0.05)
+    box = [100, 100, 140, 180]
+    first = tr.update(make_result([box]), 0.5, frame)
+    assert len(first) == 1                      # emitted before enough history
+    out = first
+    for _ in range(5):                          # > 1s of no movement
+        out = tr.update(make_result([box]), 0.5, frame)
+    assert out == []                            # flagged as a static prop
+
+
+def test_moving_track_not_suppressed_by_stationary_filter():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False,
+                            stationary_seconds=1.0, stationary_radius=0.02)
+    x, out = 50, None
+    for _ in range(6):
+        out = tr.update(make_result([[x, 100, x + 40, 180]]), 0.5, frame)
+        x += 40                                 # keeps moving right
+    assert len(out) == 1                        # a mover is never suppressed
+
+
+def test_stationary_filter_off_by_default():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False)
+    box = [100, 100, 140, 180]
+    out = None
+    for _ in range(8):
+        out = tr.update(make_result([box]), 0.5, frame)
+    assert len(out) == 1                        # no filter unless configured
+
+
 def test_reentry_gets_new_id():
     tr = MultiObjectTracker(max_age=1, min_hits=1, iou_thr=0.3, smooth=False)
     box = [10, 10, 50, 90]

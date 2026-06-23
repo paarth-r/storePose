@@ -122,6 +122,8 @@ class AppConfig:
     smooth_beta: float = 0.007
     predict_drift: bool = False
     coast: bool = False
+    stationary_seconds: float = 20.0
+    stationary_radius: float = 0.03
     zone: str | None = None
     define_zone: bool = False
     pos_zone: str | None = None
@@ -384,6 +386,17 @@ def _build_parser() -> argparse.ArgumentParser:
              "range/time/appearance.",
     )
     parser.add_argument(
+        "--stationary-seconds", type=float, default=20.0,
+        help="Suppress a track whose center stays within --stationary-radius for "
+             "this many seconds (a fixed prop, not a person); 0 disables "
+             "(default: 20).",
+    )
+    parser.add_argument(
+        "--stationary-radius", type=float, default=0.03,
+        help="Movement radius for the stationary filter, as a fraction of the "
+             "frame diagonal (default: 0.03).",
+    )
+    parser.add_argument(
         "--smooth-cutoff", type=float, default=1.0,
         help="One-Euro min_cutoff; lower = smoother/laggier (default: 1.0).",
     )
@@ -624,6 +637,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         smooth=args.smooth,
         predict_drift=args.predict_drift,
         coast=args.coast,
+        stationary_seconds=args.stationary_seconds,
+        stationary_radius=args.stationary_radius,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
         zone=args.zone,

@@ -152,6 +152,12 @@ def test_coast_off_by_default_and_flag_enables():
     assert from_args(["--coast"]).coast is True
 
 
+def test_stationary_filter_on_by_default_zero_disables():
+    c = from_args([])
+    assert c.stationary_seconds == 20.0 and c.stationary_radius == 0.03
+    assert from_args(["--stationary-seconds", "0"]).stationary_seconds == 0.0
+
+
 def test_max_overlap_validation():
     with pytest.raises(ValueError):
         AppConfig(max_overlap=1.5)

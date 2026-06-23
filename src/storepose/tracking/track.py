@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 import numpy as np
 
 from .kalman import KalmanBoxTracker
 from .smoothing import KeypointSmoother
+
+# Cap how far back detection centers are retained for the stationary test.
+_STATIONARY_HISTORY_SECONDS = 60.0
 
 # Distinct BGR colors cycled by track id. No near-orange entry, so a person's
 # color never collides with the orange queue zone fill (drawing.ZONE_COLOR).
@@ -62,7 +67,34 @@ class Track:
         self.appearance_mem = appearance_mem  # opaque; owned by the AppearanceModel
         self.reid_sim: float | None = None     # similarity of the last re-attach
         self.reid_time_left = 0.0              # seconds the RE-ID notif stays armed
+        self._t = 0.0                          # cumulative track age (seconds)
+        self._centers: deque = deque()         # (t, cx, cy) of detected boxes
+        self._record_center(box)
         self._ingest_pose(keypoints, scores, dt)
+
+    def _record_center(self, box) -> None:
+        cx = (float(box[0]) + float(box[2])) / 2.0
+        cy = (float(box[1]) + float(box[3])) / 2.0
+        self._centers.append((self._t, cx, cy))
+
+    def stationary(self, window: float, radius: float) -> bool:
+        """True if the detected center stayed within ``radius`` px over the last
+        ``window`` seconds — and we have a full window of history to judge.
+
+        Used to suppress fixed props (a track that never moves). A real person
+        who shifts beyond ``radius`` within the window resets it, so only a
+        genuinely motionless object is flagged.
+        """
+        if window <= 0 or not self._centers:
+            return False
+        cutoff = self._t - window
+        pts = [(t, x, y) for (t, x, y) in self._centers if t >= cutoff]
+        if not pts or (self._t - pts[0][0]) < window:
+            return False  # not enough continuous history yet
+        xs = [x for _, x, _ in pts]
+        ys = [y for _, _, y in pts]
+        span = float(np.hypot(max(xs) - min(xs), max(ys) - min(ys)))
+        return span <= radius
 
     def _ingest_pose(self, keypoints, scores, dt) -> None:
         self.scores = scores
@@ -81,13 +113,18 @@ class Track:
         """
         self.kalman.predict()
         self.time_since_update += 1
+        self._t += dt
         if self.reid_time_left > 0.0:
             self.reid_time_left = max(0.0, self.reid_time_left - dt)
+        cutoff = self._t - _STATIONARY_HISTORY_SECONDS
+        while self._centers and self._centers[0][0] < cutoff:
+            self._centers.popleft()
 
     def update(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
         self.last_box = np.asarray(box, float)
+        self._record_center(box)
         self.hits += 1
         self.time_since_update = 0
         if self.hits >= self.min_hits:
@@ -106,6 +143,7 @@ class Track:
         """
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)
+        self._record_center(box)
         self.time_since_update = 0
         self.hits += 1
         self.confirmed = True

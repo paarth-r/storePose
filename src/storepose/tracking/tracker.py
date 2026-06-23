@@ -90,6 +90,8 @@ class MultiObjectTracker:
         reid_thr: float = 0.6,
         predict_drift: bool = True,
         coast: bool = False,
+        stationary_seconds: float = 0.0,
+        stationary_radius: float = 0.03,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -104,6 +106,9 @@ class MultiObjectTracker:
         self._reid_thr = reid_thr
         self._predict_drift = predict_drift
         self._coast = coast
+        self._stationary_seconds = stationary_seconds
+        self._stationary_radius = stationary_radius
+        self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
         self._next_id = 0
@@ -115,6 +120,8 @@ class MultiObjectTracker:
         det_scores = result.det_scores
         n = len(boxes)
 
+        if frame is not None:
+            self._diag = float(np.hypot(frame.shape[1], frame.shape[0]))
         use_reid = self._reid and self._appearance is not None and frame is not None
         if use_reid:
             det_descs = self._appearance.extract_batch(frame, boxes, keypoints, scores)
@@ -196,6 +203,13 @@ class MultiObjectTracker:
             # emitted. It still lives internally (max_age / gallery) so a
             # returning detection re-attaches the same id by IoU or appearance.
             if coasting and not self._coast:
+                continue
+            # Stationary filter: a confirmed track that hasn't moved beyond
+            # stationary_radius over stationary_seconds is a fixed prop, not a
+            # person; suppress it (a person who shifts resets the window).
+            if (self._stationary_seconds > 0 and self._diag > 0
+                    and t.stationary(self._stationary_seconds,
+                                     self._stationary_radius * self._diag)):
                 continue
             people.append(
                 TrackedPerson(
