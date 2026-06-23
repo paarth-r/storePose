@@ -78,12 +78,12 @@ while true; do
   IFS= read -rn1 KEY || KEY=""
   case "$KEY" in
     q|Q) exit 0 ;;
-    $'\n'|$'\r') break ;;
+    ""|$'\n'|$'\r') break ;;
     $'\x1b')
       # read the bracket, then the command letter, with short timeouts
-      IFS= read -rn1 -t 0.1 C1 || C1=""
+      IFS= read -rn1 -t 1 C1 || C1=""
       if [[ "$C1" == "[" ]]; then
-        IFS= read -rn1 -t 0.1 C2 || C2=""
+        IFS= read -rn1 -t 1 C2 || C2=""
         case "$C2" in
           A)  # up arrow
             (( SEL > 0 )) && (( SEL-- )) || true
@@ -107,4 +107,4 @@ _restore
 
 VIDEO="${FILES[$SEL]}"
 printf "Launching CVAT pipeline for:\n  %s\n\n" "$VIDEO"
-exec ./viewscripts/cvat-annotate.sh --video "$VIDEO"
+exec ./cvat-annotate.sh --video "$VIDEO"
