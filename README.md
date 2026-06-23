@@ -306,7 +306,7 @@ Most-used flags:
 | `--source` | `0` | Webcam index, or path to a video file. |
 | `--mode` | `balanced` | `lightweight` \| `balanced` \| `performance`. |
 | `--device` | `mps` | `mps` (CoreML) or `cpu`. |
-| `--det-conf` | `0.8` | Person-detection confidence threshold. |
+| `--det-conf` | `0.5` | Person-detection confidence threshold. |
 | `--det-overlap` | `0.8` | Drop a box more than this fraction inside a larger one. |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing. |
 | `--conf` | — | Overlay each person's detector confidence. |

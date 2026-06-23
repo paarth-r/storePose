@@ -249,7 +249,7 @@ def test_reid_thr_override_validates_range():
 
 def test_det_conf_and_overlap_defaults():
     cfg = from_args([])
-    assert cfg.det_conf == 0.8
+    assert cfg.det_conf == 0.5
     assert cfg.det_overlap == 0.8
 
 

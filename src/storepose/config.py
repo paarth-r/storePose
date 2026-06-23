@@ -98,7 +98,7 @@ class AppConfig:
 
     source: int | str = 0
     mode: str = "balanced"
-    det_conf: float = 0.8
+    det_conf: float = 0.5
     det_overlap: float = 0.8
     kpt_thr: float = 0.5
     device: str = "mps"
@@ -270,8 +270,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--det-conf",
         type=float,
-        default=0.8,
-        help="Person detection confidence threshold (default: 0.8).",
+        default=0.5,
+        help="Person detection confidence threshold (default: 0.5). Props are "
+             "not separable by score (use the stationary filter); a higher "
+             "threshold mainly costs recall on partially-occluded people.",
     )
     parser.add_argument(
         "--det-overlap",

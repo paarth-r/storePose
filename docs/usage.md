@@ -59,7 +59,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 |------|---------|--------|
 | `--mode` | `balanced` | `lightweight` (faster) \| `balanced` \| `performance` (most accurate). |
 | `--device` | `mps` | `mps` (CoreML, ~8× faster) or `cpu` fallback. |
-| `--det-conf` | `0.8` | Person-detection confidence threshold. |
+| `--det-conf` | `0.5` | Person-detection confidence threshold. |
 | `--det-overlap` | `0.8` | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing / ankle test. |
 | `--no-fps` | — | Hide the FPS overlay. |
