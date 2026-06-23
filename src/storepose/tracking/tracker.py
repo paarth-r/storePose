@@ -113,6 +113,13 @@ class MultiObjectTracker:
         self._lost: list[_LostEntry] = []
         self._next_id = 0
 
+    def _is_stationary(self, t: Track) -> bool:
+        """A confirmed track that hasn't moved over the stationary window — a
+        fixed prop. Excluded from output and from re-id candidacy."""
+        return (self._stationary_seconds > 0 and self._diag > 0
+                and t.stationary(self._stationary_seconds,
+                                 self._stationary_radius * self._diag))
+
     def update(self, result, dt: float, frame=None) -> list[TrackedPerson]:
         boxes = result.boxes
         keypoints = result.keypoints
@@ -182,7 +189,10 @@ class MultiObjectTracker:
             if t.time_since_update >= 1 and not t.confirmed:
                 continue
             if t.time_since_update > self.max_age:
-                if use_reid and t.confirmed and t.appearance_mem is not None:
+                if (use_reid and t.confirmed and t.appearance_mem is not None
+                        and not self._is_stationary(t)):
+                    # a stationary prop never enters the gallery -> it can't be
+                    # revived onto a moving person by mere appearance similarity
                     self._lost.append(
                         _LostEntry(track=t, center=_center(t.last_box), lost_age=0)
                     )
@@ -207,9 +217,7 @@ class MultiObjectTracker:
             # Stationary filter: a confirmed track that hasn't moved beyond
             # stationary_radius over stationary_seconds is a fixed prop, not a
             # person; suppress it (a person who shifts resets the window).
-            if (self._stationary_seconds > 0 and self._diag > 0
-                    and t.stationary(self._stationary_seconds,
-                                     self._stationary_radius * self._diag)):
+            if self._is_stationary(t):
                 continue
             people.append(
                 TrackedPerson(
@@ -242,8 +250,8 @@ class MultiObjectTracker:
         cands: list[_Candidate] = []
         for tr_idx in unmatched_tracks:
             t = self._tracks[tr_idx]
-            if not t.confirmed or t.appearance_mem is None:
-                continue
+            if not t.confirmed or t.appearance_mem is None or self._is_stationary(t):
+                continue  # never re-attach a moving detection onto a static prop
             cands.append(_Candidate(t, None, _center(t.last_box), t.time_since_update))
         for e in self._lost:
             if e.track.appearance_mem is None:

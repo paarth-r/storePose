@@ -87,10 +87,14 @@ class Track:
         """
         if window <= 0 or not self._centers:
             return False
-        cutoff = self._t - window
+        # Window ends at the most recent *detection*, not "now": a prop that has
+        # since been coasting (no new detections) must still read as stationary
+        # at cull time, when it would otherwise enter the re-id gallery.
+        last_t = self._centers[-1][0]
+        cutoff = last_t - window
         pts = [(t, x, y) for (t, x, y) in self._centers if t >= cutoff]
-        if not pts or (self._t - pts[0][0]) < window:
-            return False  # not enough continuous history yet
+        if not pts or (last_t - pts[0][0]) < window:
+            return False  # not enough detection history to judge
         xs = [x for _, x, _ in pts]
         ys = [y for _, _, y in pts]
         span = float(np.hypot(max(xs) - min(xs), max(ys) - min(ys)))

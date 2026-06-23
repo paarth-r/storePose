@@ -11,7 +11,7 @@ from .busy.types import METRICS as BUSY_METRICS
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
 REID_BACKENDS = ("osnet-x1", "osnet-x025", "histogram")
-_REID_THR_DEFAULTS = {"osnet-x1": 0.65, "osnet-x025": 0.65, "histogram": 0.6}
+_REID_THR_DEFAULTS = {"osnet-x1": 0.8, "osnet-x025": 0.8, "histogram": 0.6}
 
 
 def reid_thr_for(backend: str, override: float | None) -> float:
@@ -366,7 +366,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reid-thr", type=float, default=None,
         help="Appearance similarity floor for re-attach, in [-1,1]. Default "
-             "resolves per backend (osnet: 0.65, histogram: 0.6).",
+             "resolves per backend (osnet: 0.8, histogram: 0.6).",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",

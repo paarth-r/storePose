@@ -235,8 +235,8 @@ def test_reid_backend_must_be_known():
 
 def test_reid_thr_for_resolves_per_backend():
     from storepose.config import reid_thr_for
-    assert reid_thr_for("osnet-x1", None) == 0.65
-    assert reid_thr_for("osnet-x025", None) == 0.65
+    assert reid_thr_for("osnet-x1", None) == 0.8
+    assert reid_thr_for("osnet-x025", None) == 0.8
     assert reid_thr_for("histogram", None) == 0.6
     assert reid_thr_for("osnet-x1", 0.3) == 0.3    # explicit override wins
 

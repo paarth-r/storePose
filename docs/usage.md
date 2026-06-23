@@ -69,7 +69,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. The launcher's `reid` column cycles `osnet-x025 → osnet-x1 → histogram → off` per view. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
-| `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.65, histogram 0.6). |
+| `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.8, histogram 0.6). |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
 | `--save PATH` | — | Write the annotated stream to an `.mp4`. |
 | `--debug` | — | Step through frames (scrub a rolling buffer); read each person's classification in the dashboard Debug tab. |

@@ -116,6 +116,23 @@ def test_stationary_filter_off_by_default():
     assert len(out) == 1                        # no filter unless configured
 
 
+def test_stationary_prop_excluded_from_reid():
+    # A static prop must never be a re-id target: a moving detection elsewhere
+    # with near-identical appearance (e.g. both dark) must NOT revive its id.
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=2, min_hits=1, iou_thr=0.3, smooth=False,
+                            appearance=_ConstScoreStub(0.99), reid=True,
+                            reid_max_age=200, reid_thr=0.5,
+                            stationary_seconds=1.0, stationary_radius=0.05)
+    prop = [100, 100, 140, 180]
+    for _ in range(5):                      # >1s stationary -> flagged as a prop
+        tr.update(make_result([prop]), 0.5, frame)
+    for _ in range(4):                      # age the prop out
+        tr.update(make_result([]), 0.5, frame)
+    out = tr.update(make_result([[300, 300, 340, 380]]), 0.5, frame)  # new, matching look
+    assert out and all(p.id != 0 for p in out)   # prop's id 0 was not revived
+
+
 def test_reentry_gets_new_id():
     tr = MultiObjectTracker(max_age=1, min_hits=1, iou_thr=0.3, smooth=False)
     box = [10, 10, 50, 90]
