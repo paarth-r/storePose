@@ -37,8 +37,14 @@ Log in with the credentials you created. You are now ready to create a task and 
 Create a task with the following label configuration:
 
 - **Label:** `person`
-- **Shape:** `points` (a single point per person)
+- **Shape:** `rectangle` (a bounding box per person)
 - **Tracking mode:** track (each person gets one persistent track ID across frames)
+
+> The box's **bottom-center** is taken as the person's ground point, so occupancy
+> and membership scoring are identical whether a person is annotated as a box or
+> (historically) a single point. Boxes are used because they are far faster to
+> *review*: the pipeline pre-annotates every person as a box track (below), and a
+> human drags, deletes, or re-labels rather than placing points from scratch.
 
 ### Attributes (all mutable frame-by-frame)
 
@@ -87,6 +93,33 @@ Add a keyframe when:
 - The person **enters or leaves** the frame/area (mark the frame with `outside` as described above).
 
 Between keyframes, CVAT's linear interpolation will smoothly move the point. You do **not** need to keyframe every frame — interpolation handles the motion. This approach reduces annotation effort while preserving positional accuracy for future association work (phase 2).
+
+## Pre-annotation (model-assisted labeling)
+
+Rather than annotate from a blank task, let the storePose pipeline detect and
+track every person first, then **review** its output in CVAT — drag a box that
+drifted, delete a false positive (e.g. a merchandise stand mis-detected as a
+person), and flip `membership` where the default is wrong. This is the
+Roboflow-style "approve/deny" loop, but the detector is your own pipeline, so
+the tracks carry stable IDs for free.
+
+Generate the pre-annotation XML:
+
+```bash
+uv run python busy_report.py export-cvat videos/clip.mp4 -o clip_preanno.xml
+# or just the first N frames while iterating:
+uv run python busy_report.py export-cvat videos/clip.mp4 -o clip_preanno.xml --max-frames 750
+```
+
+Each confirmed track becomes one CVAT `box` track (a keyframe per frame, stable
+ID, `membership` pre-filled to `in_line`). Then in the CVAT task: **Menu ->
+Upload annotations**, format **"CVAT for video 1.1"**, select `clip_preanno.xml`.
+Upload into a task whose `person` label is already configured as a `rectangle`
+with the attributes above and whose uploaded video matches the clip exactly
+(same frames), or the boxes will land on the wrong frames.
+
+Review, then re-export (next section) and score — the round-trip is closed:
+`export-cvat` and `import-cvat` read/write the same box-track format.
 
 ## Export and score
 

@@ -133,6 +133,62 @@ def _eval_occupancy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export_cvat(args: argparse.Namespace) -> int:
+    import cv2  # local: only the pipeline driver needs OpenCV/model deps
+
+    from storepose.config import AppConfig
+    from storepose.eval.cvat_export import build_box_tracks, tracks_to_cvat_xml
+    from storepose.pipeline import PosePipeline
+    from storepose.runner import build_tracker
+
+    cap = cv2.VideoCapture(args.source)
+    if not cap.isOpened():
+        print(f"Could not open {args.source}", file=sys.stderr)
+        return 1
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    limit = total if args.max_frames <= 0 else min(total, args.max_frames)
+
+    config = AppConfig(source=args.source, mode=args.mode, device=args.device)
+    print(f"Loading models (mode={args.mode}, device={args.device})...")
+    pipeline = PosePipeline(config)
+    tracker = build_tracker(config, fps)
+    dt = 1.0 / fps
+
+    per_frame: dict[int, list[tuple[int, tuple[float, float, float, float]]]] = {}
+    processed = 0
+    for frame_idx in range(limit):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        result = pipeline.process(frame)
+        people = tracker.update(result, dt, frame)
+        per_frame[frame_idx] = [
+            (int(p.id), (float(p.box[0]), float(p.box[1]),
+                         float(p.box[2]), float(p.box[3])))
+            for p in people
+        ]
+        processed += 1
+        if processed % 100 == 0:
+            print(f"  {processed}/{limit} frames, {len(people)} people")
+    cap.release()
+
+    tracks = build_box_tracks(
+        per_frame, total_frames=processed,
+        default_membership=args.membership_default,
+    )
+    xml = tracks_to_cvat_xml(tracks, width=width, height=height)
+    with open(args.output, "w") as f:
+        f.write(xml)
+    print(
+        f"{len(tracks)} track(s) over {processed} frame(s) "
+        f"({width}x{height}@{fps:.0f}fps) -> {args.output}"
+    )
+    return 0
+
+
 def _label(args: argparse.Namespace) -> int:
     import cv2  # local: only the labeling UI needs OpenCV's GUI
 
@@ -252,6 +308,24 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Sampling step; must match the import-cvat --step "
                          "(default: 1.0).")
     eo.set_defaults(func=_eval_occupancy)
+
+    ex = sub.add_parser("export-cvat",
+                        help="run the pipeline -> CVAT box-track XML for review")
+    ex.add_argument("source", help="Path to the video to pre-annotate.")
+    ex.add_argument("-o", "--output", required=True, metavar="PATH",
+                    help="CVAT-for-video 1.1 XML to write.")
+    ex.add_argument("--mode", default="balanced",
+                    help="Pose model mode (default: balanced).")
+    ex.add_argument("--device", default="mps",
+                    help="Inference device: mps or cpu (default: mps).")
+    ex.add_argument("--max-frames", type=int, default=0,
+                    help="Only process the first N frames; 0 = whole clip "
+                         "(default: 0).")
+    ex.add_argument("--membership-default", default="in_line",
+                    choices=("in_line", "bystander"),
+                    help="Pre-filled membership for every track; the reviewer "
+                         "flips the exceptions (default: in_line).")
+    ex.set_defaults(func=_export_cvat)
 
     lb = sub.add_parser("label", help="hand-label a video's windows -> truth CSV")
     lb.add_argument("video", help="Path to the video to label.")
