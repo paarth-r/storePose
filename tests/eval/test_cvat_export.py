@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from storepose.eval.cvat_export import BoxShape, BoxTrack, tracks_to_cvat_xml
+from storepose.eval.cvat_export import (
+    BoxShape,
+    BoxTrack,
+    build_box_tracks,
+    tracks_to_cvat_xml,
+)
 from storepose.eval.cvat_import import parse_cvat_xml
 
 
@@ -32,6 +37,32 @@ def test_export_roundtrips_through_the_importer():
     assert parsed[0].shapes[0].attrs["membership"] == "in_line"
     assert parsed[0].shapes[1].outside is True
     assert parsed[1].shapes[0].attrs["membership"] == "bystander"
+
+
+def test_build_box_tracks_marks_exit_with_trailing_outside():
+    # Track 7 is present on frames 0 and 1, then gone; the clip has 5 frames.
+    # Its disappearance is marked by a trailing outside=True keyframe at frame 2.
+    per_frame = {
+        0: [(7, (10.0, 20.0, 30.0, 120.0))],
+        1: [(7, (11.0, 21.0, 31.0, 121.0))],
+    }
+    tracks = build_box_tracks(per_frame, total_frames=5)
+    assert [t.id for t in tracks] == [7]
+    shapes = tracks[0].shapes
+    assert [s.frame for s in shapes] == [0, 1, 2]
+    assert [s.outside for s in shapes] == [False, False, True]
+    assert shapes[0].attrs["membership"] == "in_line"  # default pre-fill
+
+
+def test_build_box_tracks_no_trailing_outside_when_present_to_end():
+    # A track present on the final frame needs no outside keyframe; the video ends.
+    per_frame = {
+        3: [(9, (1.0, 2.0, 3.0, 4.0))],
+        4: [(9, (1.0, 2.0, 3.0, 4.0))],
+    }
+    tracks = build_box_tracks(per_frame, total_frames=5)
+    assert [s.frame for s in tracks[0].shapes] == [3, 4]
+    assert all(s.outside is False for s in tracks[0].shapes)
 
 
 def test_export_emits_valid_cvat_for_video_header():

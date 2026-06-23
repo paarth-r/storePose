@@ -42,6 +42,45 @@ class BoxTrack:
     shapes: list[BoxShape]
 
 
+def build_box_tracks(
+    per_frame: dict[int, list[tuple[int, tuple[float, float, float, float]]]],
+    *,
+    total_frames: int,
+    default_membership: str = "in_line",
+    label: str = "person",
+) -> list[BoxTrack]:
+    """Assemble per-frame ``(track_id, xyxy)`` observations into box tracks.
+
+    ``per_frame`` maps a frame index to the people seen on it. Each track gets a
+    keyframe per frame it appears on (pre-filled with ``default_membership`` for
+    the reviewer to confirm or flip). A track that disappears before the clip
+    ends gets a trailing ``outside=True`` keyframe on the frame after its last
+    appearance, so the importer counts it absent thereafter; a track present on
+    the final frame needs none. Tracks are returned ordered by id.
+    """
+    by_id: dict[int, list[tuple[int, tuple[float, float, float, float]]]] = {}
+    for frame in sorted(per_frame):
+        for tid, box in per_frame[frame]:
+            by_id.setdefault(tid, []).append((frame, box))
+
+    tracks: list[BoxTrack] = []
+    for tid in sorted(by_id):
+        obs = sorted(by_id[tid], key=lambda fb: fb[0])
+        shapes = [
+            BoxShape(frame, False, box[0], box[1], box[2], box[3],
+                     {"membership": default_membership})
+            for frame, box in obs
+        ]
+        last_frame, last_box = obs[-1]
+        if last_frame < total_frames - 1:
+            shapes.append(
+                BoxShape(last_frame + 1, True, last_box[0], last_box[1],
+                         last_box[2], last_box[3], {"membership": default_membership})
+            )
+        tracks.append(BoxTrack(id=tid, label=label, shapes=shapes))
+    return tracks
+
+
 def tracks_to_cvat_xml(
     tracks: list[BoxTrack],
     *,
