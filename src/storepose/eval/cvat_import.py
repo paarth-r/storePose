@@ -58,6 +58,23 @@ def parse_cvat_xml(text: str) -> list[GtTrack]:
                     attrs=attrs,
                 )
             )
+        for bx in tr.findall("box"):
+            # A box's ground point is its bottom-center, so occupancy/membership
+            # logic is identical whether a person was annotated as a point or a box.
+            xtl, xbr = float(bx.get("xtl", "0")), float(bx.get("xbr", "0"))
+            ybr = float(bx.get("ybr", "0"))
+            attrs = {
+                a.get("name", ""): (a.text or "") for a in bx.findall("attribute")
+            }
+            shapes.append(
+                GtShape(
+                    frame=int(bx.get("frame", "0")),
+                    outside=bx.get("outside") == "1",
+                    x=(xtl + xbr) / 2.0,
+                    y=ybr,
+                    attrs=attrs,
+                )
+            )
         shapes.sort(key=lambda s: s.frame)
         tracks.append(
             GtTrack(id=int(tr.get("id", "0")), label=tr.get("label", ""), shapes=shapes)

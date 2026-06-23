@@ -46,6 +46,29 @@ def test_parse_builds_tracks_and_shapes():
     assert tracks[1].shapes[0].attrs["membership"] == "bystander"
 
 
+BOX_XML = """<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <track id="0" label="person">
+    <box frame="10" outside="0" occluded="0" keyframe="1" xtl="80.0" ytl="40.0" xbr="120.0" ybr="200.0">
+      <attribute name="membership">in_line</attribute>
+    </box>
+    <box frame="20" outside="1" occluded="0" keyframe="1" xtl="90.0" ytl="50.0" xbr="130.0" ybr="210.0">
+      <attribute name="membership">in_line</attribute>
+    </box>
+  </track>
+</annotations>
+"""
+
+
+def test_parse_box_uses_bottom_center_as_ground_point():
+    # A box's ground point is the bottom-center: x=(xtl+xbr)/2, y=ybr.
+    tracks = parse_cvat_xml(BOX_XML)
+    assert tracks[0].shapes[0] == GtShape(10, False, 100.0, 200.0, {"membership": "in_line"})
+    assert tracks[0].shapes[1].outside is True
+    assert (tracks[0].shapes[1].x, tracks[0].shapes[1].y) == (110.0, 210.0)
+
+
 def test_parse_shapes_sorted_by_frame():
     xml = SAMPLE_XML.replace('frame="10"', 'frame="99"')  # out-of-order keyframe
     tracks = parse_cvat_xml(xml)
