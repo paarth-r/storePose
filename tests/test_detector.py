@@ -1,6 +1,24 @@
 import numpy as np
 
-from storepose.detector import _contained_keep_indices, suppress_contained_boxes
+from storepose.detector import (
+    _contained_keep_indices,
+    filter_confident,
+    suppress_contained_boxes,
+)
+
+
+def test_filter_confident_drops_boxes_below_threshold():
+    boxes = np.array([[0, 0, 10, 10], [0, 0, 20, 20], [0, 0, 30, 30]], float)
+    scores = np.array([0.92, 0.55, 0.81], np.float32)
+    b, s = filter_confident(boxes, scores, 0.8)
+    assert len(b) == 2
+    assert np.allclose(s, [0.92, 0.81])
+    assert np.array_equal(b[0], [0, 0, 10, 10]) and np.array_equal(b[1], [0, 0, 30, 30])
+
+
+def test_filter_confident_empty_passes_through():
+    b, s = filter_confident(np.empty((0, 4), float), np.empty((0,), np.float32), 0.8)
+    assert len(b) == 0 and len(s) == 0
 
 
 def test_drops_box_mostly_contained_in_a_larger_one():

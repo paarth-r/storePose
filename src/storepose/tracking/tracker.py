@@ -89,6 +89,7 @@ class MultiObjectTracker:
         reid_max_age: int = 150,
         reid_thr: float = 0.6,
         predict_drift: bool = True,
+        coast: bool = False,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -102,6 +103,7 @@ class MultiObjectTracker:
         self._reid_max_age = reid_max_age
         self._reid_thr = reid_thr
         self._predict_drift = predict_drift
+        self._coast = coast
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
         self._next_id = 0
@@ -190,6 +192,11 @@ class MultiObjectTracker:
             if not t.confirmed:
                 continue
             coasting = t.coasting
+            # No-coast (default): a track with no detection this frame is not
+            # emitted. It still lives internally (max_age / gallery) so a
+            # returning detection re-attaches the same id by IoU or appearance.
+            if coasting and not self._coast:
+                continue
             people.append(
                 TrackedPerson(
                     id=t.id,

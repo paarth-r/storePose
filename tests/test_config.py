@@ -147,6 +147,11 @@ def test_predict_drift_off_by_default_and_flag_enables():
     assert from_args(["--predict-drift"]).predict_drift is True
 
 
+def test_coast_off_by_default_and_flag_enables():
+    assert from_args([]).coast is False
+    assert from_args(["--coast"]).coast is True
+
+
 def test_max_overlap_validation():
     with pytest.raises(ValueError):
         AppConfig(max_overlap=1.5)

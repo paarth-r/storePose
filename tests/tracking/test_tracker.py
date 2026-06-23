@@ -23,7 +23,7 @@ def test_track_confirms_after_min_hits():
 
 
 def test_detector_score_propagates_and_clears_on_coast():
-    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False)
+    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
     box = [10, 10, 50, 90]
     out = tr.update(make_result([box]), 1 / 30)
     assert abs(out[0].score - 0.9) < 1e-6     # detector score reaches the person
@@ -46,7 +46,7 @@ def test_two_detections_get_distinct_ids():
 
 
 def test_coasts_then_dies():
-    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False)
+    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
     box = [10, 10, 50, 90]
     assert tr.update(make_result([box]), 1 / 30)[0].coasting is False
     o1 = tr.update(make_result([]), 1 / 30)
@@ -54,6 +54,32 @@ def test_coasts_then_dies():
     tr.update(make_result([]), 1 / 30)
     assert len(tr.update(make_result([]), 1 / 30)) == 1  # t=3, still within max_age
     assert tr.update(make_result([]), 1 / 30) == []      # t=4, culled
+
+
+def test_no_coast_default_omits_undetected_track():
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False)  # coast off
+    box = [10, 10, 50, 90]
+    assert tr.update(make_result([box]), 1 / 30)[0].coasting is False
+    assert tr.update(make_result([]), 1 / 30) == []  # no detection -> not emitted
+
+
+def test_coast_flag_emits_held_track():
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
+    box = [10, 10, 50, 90]
+    tr.update(make_result([box]), 1 / 30)
+    out = tr.update(make_result([]), 1 / 30)
+    assert len(out) == 1 and out[0].coasting is True
+
+
+def test_no_coast_keeps_id_when_detection_returns():
+    # Suppressing coasting output must not lose identity: the track survives
+    # internally, so a returning detection re-matches the same id by IoU.
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False)
+    box = [10, 10, 50, 90]
+    assert tr.update(make_result([box]), 1 / 30)[0].id == 0
+    assert tr.update(make_result([]), 1 / 30) == []      # gap frame: not emitted
+    out = tr.update(make_result([box]), 1 / 30)          # detection returns
+    assert len(out) == 1 and out[0].id == 0              # same id, no new track
 
 
 def test_reentry_gets_new_id():

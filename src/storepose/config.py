@@ -121,6 +121,7 @@ class AppConfig:
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
     predict_drift: bool = False
+    coast: bool = False
     zone: str | None = None
     define_zone: bool = False
     pos_zone: str | None = None
@@ -374,6 +375,13 @@ def _build_parser() -> argparse.ArgumentParser:
              "drift away from the person and the mis-associations it causes.",
     )
     parser.add_argument(
+        "--coast", dest="coast", action="store_true",
+        help="Keep emitting a track that has no detection this frame (held box) "
+             "for up to --hold-seconds. Off by default: a track with no detection "
+             "is dropped immediately; a returning detection re-attaches its id by "
+             "range/time/appearance.",
+    )
+    parser.add_argument(
         "--smooth-cutoff", type=float, default=1.0,
         help="One-Euro min_cutoff; lower = smoother/laggier (default: 1.0).",
     )
@@ -613,6 +621,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_thr=args.reid_thr,
         smooth=args.smooth,
         predict_drift=args.predict_drift,
+        coast=args.coast,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
         zone=args.zone,
