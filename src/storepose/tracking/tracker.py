@@ -92,6 +92,8 @@ class MultiObjectTracker:
         coast: bool = False,
         stationary_seconds: float = 0.0,
         stationary_radius: float = 0.03,
+        assoc_app_weight: float = 0.0,
+        assoc_app_floor: float = 0.0,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -108,6 +110,8 @@ class MultiObjectTracker:
         self._coast = coast
         self._stationary_seconds = stationary_seconds
         self._stationary_radius = stationary_radius
+        self._assoc_app_weight = assoc_app_weight
+        self._assoc_app_floor = assoc_app_floor
         self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
@@ -143,11 +147,25 @@ class MultiObjectTracker:
                 e.lost_age += 1
             self._lost = [e for e in self._lost if e.lost_age <= self._reid_max_age]
 
-        # 2. associate detections to predicted tracks by IoU
+        # 2. associate detections to predicted tracks by IoU, optionally fusing
+        #    appearance into the primary cost so a passing person isn't matched
+        #    onto an overlapping but dissimilar-looking track (e.g. a fixed prop)
         det_boxes = [boxes[i] for i in range(n)]
         track_boxes = [t.box for t in self._tracks]
+        appsim = None
+        if use_reid and self._assoc_app_weight > 0 and self._tracks:
+            appsim = np.full((n, len(self._tracks)), np.nan, dtype=np.float32)
+            for d in range(n):
+                dd = det_descs[d]
+                if dd is None:
+                    continue
+                for j, t in enumerate(self._tracks):
+                    if t.appearance_mem is not None:
+                        appsim[d, j] = self._appearance.score(t.appearance_mem, dd)
         matches, unmatched_dets, unmatched_tracks = match(
-            det_boxes, track_boxes, self.iou_thr
+            det_boxes, track_boxes, self.iou_thr,
+            appsim=appsim, app_weight=self._assoc_app_weight,
+            app_floor=self._assoc_app_floor,
         )
 
         # 3. update matched tracks

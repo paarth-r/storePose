@@ -158,6 +158,12 @@ def test_stationary_filter_on_by_default_zero_disables():
     assert from_args(["--stationary-seconds", "0"]).stationary_seconds == 0.0
 
 
+def test_appearance_fused_association_on_by_default():
+    c = from_args([])
+    assert c.reid_assoc_weight == 0.4 and c.reid_assoc_floor == 0.3
+    assert from_args(["--reid-assoc-weight", "0"]).reid_assoc_weight == 0.0
+
+
 def test_max_overlap_validation():
     with pytest.raises(ValueError):
         AppConfig(max_overlap=1.5)

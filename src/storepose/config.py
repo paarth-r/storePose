@@ -117,6 +117,8 @@ class AppConfig:
     reid_backend: str = "osnet-x025"
     reid_weights: str | None = None
     reid_thr: float | None = None
+    reid_assoc_weight: float = 0.4
+    reid_assoc_floor: float = 0.3
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -367,6 +369,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--reid-thr", type=float, default=None,
         help="Appearance similarity floor for re-attach, in [-1,1]. Default "
              "resolves per backend (osnet: 0.8, histogram: 0.6).",
+    )
+    parser.add_argument(
+        "--reid-assoc-weight", type=float, default=0.4,
+        help="Weight of appearance vs IoU in the primary association cost "
+             "(0 = IoU only; fuses 'looks like' into the match). Default 0.4.",
+    )
+    parser.add_argument(
+        "--reid-assoc-floor", type=float, default=0.3,
+        help="Reject a primary match whose appearance similarity is below this, "
+             "even at high IoU (stops a person matching onto a prop). Default 0.3.",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
@@ -634,6 +646,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_backend=args.reid_backend,
         reid_weights=args.reid_weights,
         reid_thr=args.reid_thr,
+        reid_assoc_weight=args.reid_assoc_weight,
+        reid_assoc_floor=args.reid_assoc_floor,
         smooth=args.smooth,
         predict_drift=args.predict_drift,
         coast=args.coast,

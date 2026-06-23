@@ -29,25 +29,45 @@ def iou_matrix(dets: list[np.ndarray], tracks: list[np.ndarray]) -> np.ndarray:
 
 
 def match(
-    dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float
+    dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float,
+    *, appsim: np.ndarray | None = None, app_weight: float = 0.0,
+    app_floor: float = 0.0,
 ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
-    """Associate detections to tracks by maximum IoU, gated by ``iou_thr``.
+    """Associate detections to tracks, gated by ``iou_thr``.
 
-    Returns ``(matches, unmatched_dets, unmatched_tracks)`` where ``matches`` is
-    a list of ``(det_index, track_index)`` pairs.
+    With ``appsim`` (a ``(len(dets), len(tracks))`` cosine-similarity matrix in
+    ``[-1, 1]``, ``NaN`` where unknown) and ``app_weight > 0``, appearance is
+    fused into the **primary** cost (StrongSORT/BoT-SORT style): the assignment
+    maximizes a blend of IoU and looks, and a pair whose appearance is below
+    ``app_floor`` is rejected even at high IoU — so a person passing in front of
+    a fixed prop is not matched onto the prop's track. ``appsim=None`` /
+    ``app_weight=0`` reproduces plain IoU matching.
+
+    Returns ``(matches, unmatched_dets, unmatched_tracks)``.
     """
     if len(dets) == 0 or len(tracks) == 0:
         return [], list(range(len(dets))), list(range(len(tracks)))
 
     m = iou_matrix(dets, tracks)
-    rows, cols = linear_sum_assignment(-m)  # maximize total IoU
+    if appsim is not None and app_weight > 0:
+        norm = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
+        # where appearance is unknown (NaN), fall back to IoU for that pair
+        app_component = np.where(np.isnan(norm), m, norm)
+        score = (1.0 - app_weight) * m + app_weight * app_component
+    else:
+        score = m
+
+    rows, cols = linear_sum_assignment(-score)  # maximize the (blended) score
 
     matches: list[tuple[int, int]] = []
     unmatched_dets = set(range(len(dets)))
     unmatched_tracks = set(range(len(tracks)))
     for r, c in zip(rows, cols):
-        if m[r, c] >= iou_thr:
-            matches.append((int(r), int(c)))
-            unmatched_dets.discard(int(r))
-            unmatched_tracks.discard(int(c))
+        if m[r, c] < iou_thr:
+            continue  # proximity sanity always applies
+        if appsim is not None and not np.isnan(appsim[r, c]) and appsim[r, c] < app_floor:
+            continue  # appearance veto: looks nothing like this track
+        matches.append((int(r), int(c)))
+        unmatched_dets.discard(int(r))
+        unmatched_tracks.discard(int(c))
     return matches, sorted(unmatched_dets), sorted(unmatched_tracks)
