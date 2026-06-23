@@ -21,9 +21,10 @@ or photogrammetry) is explicitly parked as a later, decoupled visualization laye
 
 From a fixed camera's tracked people, project each person's floor position into a
 per-camera **metric floor frame**, accumulate into a density grid weighted by
-dwell time, and render a viewable rectified top-down heatmap. Calibration of the
-floor frame is automatic via Apple **Depth Pro** (run once per camera), with a
-manual 4-point homography as a zero-dependency fallback and sanity check.
+dwell time, and render a viewable rectified top-down heatmap. The floor frame is
+derived from a **required** Apple **Depth Pro** scene-calibration step (run once
+per camera, cached); a manual 4-point homography exists only as a fallback /
+sanity check when the depth plane-fit fails.
 
 ## Non-Goals (v1)
 
@@ -62,11 +63,23 @@ manual 4-point homography as a zero-dependency fallback and sanity check.
    the manual homography is simpler — so Depth Anything is not used (its
    metric-fine-tuned variant is a documented lighter fallback only).
 
-4. **Depth Pro is offline and optional; the live pipeline stays ONNX-only.**
-   The realtime stack is rtmlib + onnxruntime with no torch. Depth Pro is
-   PyTorch. It runs once per camera in a separate calibration tool under an
-   optional `depth` dependency group. The live heatmap accumulation imports
-   only numpy. The realtime path never gains a torch/GPU dependency.
+4. **Depth is foundational and required — a mandatory calibration gate, run
+   once and cached.** Depth Pro (PyTorch) is a *core* dependency, not an optional
+   group: depth underpins not just the heatmap but planned future work (gaze
+   detection, richer 3D analytics), so the project does not install without it.
+   It is **not** in the per-frame loop: cameras are fixed and the floor is
+   static, so depth only changes if a camera moves. Depth Pro therefore runs
+   **once per camera as a required calibration step that must complete before the
+   pipeline runs**, and its output is cached to disk. The live loop reads the
+   cache (numpy only) and never invokes torch at runtime — but torch is installed
+   because calibration is non-negotiable.
+
+5. **Cache the full scene geometry, not just the floor homography.** Because the
+   depth pass is foundational for future features, its cached artifact is the
+   whole scene model — depth map, estimated focal/intrinsics, floor plane,
+   floor normal, and point cloud — so gaze and other downstream work reuse the
+   same calibration instead of re-deriving geometry. The floor homography is one
+   derived view of this cache, not the whole of it.
 
 ## Architecture
 
@@ -82,19 +95,44 @@ TrackedPerson ──anchor──▶ floor_pixel (u,v) ──H_cam──▶ floor
                                                           render: rectified top-down PNG/npy
                                                           (later: 3D drape)
 
-                         offline, run once per camera (torch, optional dep)
-one frame ──Depth Pro──▶ metric point cloud ──fit floor plane──▶ H_cam + plane  ──▶ calib JSON
-            (or)  manual 4-point click ────────────────────────▶ H_cam (relative or metric)
+         REQUIRED calibration gate — run once per camera, cached (torch, core dep)
+one frame ──Depth Pro──▶ metric point cloud + focal ──┬─ fit floor plane + normal
+                                                      ├─ depth map, intrinsics
+                                                      └─▶ scene-geometry cache (calib/scene/<cam>)
+                                                            │ (H_cam derived from plane)
+            (manual override / cross-check) ───────────────┘
 ```
+
+The cache is the prerequisite for everything downstream; the live pipeline
+refuses to run a camera that has no scene-geometry cache.
 
 ### Components
 
-- **`FloorFrame` / `CameraView`** (new `heatmap/floor.py`): a `CameraView` holds
-  `camera_id`, homography `H` (image pixel -> floor meters, camera frame), and
-  `T_cam_to_store` (2D similarity transform into the shared store frame;
-  identity by default). `apply(u, v) -> (X, Y)` does the projection. A
-  `StoreFloor` is a list of `CameraView`s sharing one coordinate system — the
-  stitching hook.
+The foundational geometry lives in a new top-level `scene/` package (not under
+`heatmap/`), because depth-derived scene geometry is shared infrastructure that
+future features — gaze, 3D analytics — consume alongside the heatmap.
+
+- **Scene calibration gate** (`scene/depthpro.py`): runs Depth Pro once per
+  camera (MPS/CPU) on one frame, back-projects to a metric point cloud using the
+  self-estimated focal, RANSAC-fits the dominant floor plane, and writes the
+  **scene-geometry cache**: depth map + intrinsics/focal + floor plane + floor
+  normal + point cloud. This is a required step; nothing downstream runs without
+  its cache. A `scene/manual.py` override (4-point click, optional vertical-line
+  mark) exists only as a cross-check / fallback when the plane fit fails — it is
+  no longer a co-equal backend now that depth is mandatory.
+
+- **Scene cache I/O** (`scene/cache.py`): load/save the cache to
+  `calib/scene/<camera_id>.{json,npz}` (JSON for plane/normal/intrinsics/units,
+  `.npz` for the depth map and point cloud). Validity note: the cache holds while
+  the camera is fixed; re-run only if a camera is repositioned. Callers fail
+  loudly if a camera has no cache.
+
+- **`FloorFrame` / `CameraView`** (`scene/geometry.py`): a `CameraView` holds
+  `camera_id`, homography `H` (image pixel -> floor meters, camera frame) derived
+  from the cached plane, the floor `normal`, and `T_cam_to_store` (2D similarity
+  transform into the shared store frame; identity by default). `apply(u, v) ->
+  (X, Y)` does the projection. A `StoreFloor` is a list of `CameraView`s sharing
+  one coordinate system — the stitching hook. Built *from* the scene cache.
 
 - **Anchor selection** (`heatmap/anchor.py`): per `TrackedPerson`, estimate the
   floor-contact pixel using the *best available* body evidence. Critically,
@@ -116,21 +154,6 @@ one frame ──Depth Pro──▶ metric point cloud ──fit floor plane─�
   Returns floor pixel + quality. Skips coasting tracks (no keypoints). Box
   bottom-center is only the last resort precisely because it sits at the
   occluder, not the floor, when feet are hidden.
-
-- **Calibration backends** (one interface, `heatmap/calibrate/`):
-  - `depthpro.py` — load one frame, run Depth Pro (MPS/CPU), back-project to a
-    metric point cloud, RANSAC-fit the dominant floor plane, derive `H` mapping
-    image pixels to in-plane metric coordinates **and persist the plane normal**
-    (the scene vertical) so the anchor module's hip-drop has a principled "down".
-    Writes a floor-calib JSON. Imports torch + depth_pro lazily; only this module
-    needs the optional dep.
-  - `manual.py` — click/define 4+ floor points; with optional known distances
-    -> metric `H`, else relative top-down `H`. Zero extra dependencies. Also
-    the cross-check tool for Depth Pro output. Note: manual calibration yields
-    `H` but no floor normal, so the hip-drop anchor (step 3) is unavailable under
-    manual-only calibration — those frames fall back to box-bottom unless the
-    user also marks one vertical reference line (optional, gives the normal).
-    Depth Pro calibration is the path that unlocks hip-drop for free.
 
 - **Accumulator** (`heatmap/accumulate.py`): a `DensityGrid` over the floor
   frame at a configurable cell size (e.g. 0.1 m). Two robustness layers make the
@@ -155,31 +178,36 @@ one frame ──Depth Pro──▶ metric point cloud ──fit floor plane─�
 ### Data / file layout
 
 ```
+src/storepose/scene/            # foundational depth-derived geometry (required gate)
+  __init__.py
+  depthpro.py       # run Depth Pro once per camera -> scene-geometry cache
+  manual.py         # 4-point override / cross-check (fallback only)
+  cache.py          # load/save scene cache
+  geometry.py       # FloorFrame, CameraView, StoreFloor, projection (from cache)
 src/storepose/heatmap/
   __init__.py
-  floor.py          # FloorFrame, CameraView, StoreFloor, projection
-  anchor.py         # TrackedPerson -> floor pixel
-  accumulate.py     # DensityGrid, dwell weighting
+  anchor.py         # TrackedPerson -> floor pixel (best-available body evidence)
+  accumulate.py     # DensityGrid, per-track smoothing, quality-weighted dwell
   render.py         # top-down colormap render
-  calibrate/
-    __init__.py     # backend interface
-    manual.py       # 4-point homography (no deps)
-    depthpro.py     # Depth Pro one-shot (optional torch dep)
-calib/floor/<camera_id>.json   # persisted H, plane, T_cam_to_store, units, source
+calib/scene/<camera_id>.json   # plane, normal, intrinsics/focal, H, T_cam_to_store, units
+calib/scene/<camera_id>.npz    # depth map + point cloud (reused by future features)
 outputs/heatmap/<camera_id>.{png,npy}
 ```
 
-Calibration is a sibling concern to the existing `calib/` (busy bands) and
-`zones/` (pixel polygons); floor calibration gets its own `calib/floor/`
-namespace, JSON-persisted so the live path never re-runs Depth Pro.
+Scene calibration is a sibling concern to the existing `calib/` (busy bands) and
+`zones/` (pixel polygons); it gets its own `calib/scene/` namespace, persisted so
+the live path never re-runs Depth Pro and future features (gaze) reuse the cache.
 
 ### Dependencies
 
-- Live pipeline: unchanged (numpy/scipy/onnxruntime/opencv/rtmlib).
-- New optional group in `pyproject.toml`: `[dependency-groups] depth = ["torch",
-  "depth-pro @ <apple ml-depth-pro source>"]`. Only `calibrate/depthpro.py`
-  imports it, lazily, with a clear error if the group is not installed.
-- Runs on MPS or CPU on Mac (one frame; CPU latency acceptable).
+- **torch + depth-pro become core `dependencies`** in `pyproject.toml` (not an
+  optional group): depth is foundational, so the project does not install without
+  it. `depth-pro @ <apple ml-depth-pro source>` (Apple's `ml-depth-pro`).
+- **Runtime separation, not dependency separation.** Only `scene/depthpro.py`
+  imports torch, and only at calibration time. The live loop
+  (`scene/geometry.py`, `heatmap/*`) imports numpy and reads the cache — it never
+  invokes torch. So adding a heavy dep does not slow or burden the per-frame path.
+- Runs on MPS or CPU on Mac (one frame per camera; CPU latency acceptable).
 
 ## Multi-Camera Stitching (designed-in, not executed in v1)
 
@@ -193,8 +221,10 @@ when that lands — they already operate in the shared store frame.
 
 ## Testing
 
-- `floor.py`: synthetic homography round-trips (known pixel -> known meter),
-  `T_cam_to_store` composition, identity default.
+- `scene/geometry.py`: synthetic homography round-trips (known pixel -> known
+  meter), `T_cam_to_store` composition, identity default; FloorFrame built from
+  a synthetic cache.
+- `scene/cache.py`: round-trip save/load; loud failure when a camera has no cache.
 - `anchor.py`: ankle-visible, one-ankle, ankle-occluded-but-hips-visible ->
   hip-drop along a known floor normal hits the expected floor point, no-pose ->
   box-bottom fallback, coasting -> skipped. Score-threshold boundaries; quality
@@ -203,9 +233,10 @@ when that lands — they already operate in the shared store frame.
   weight at 15 vs 30 fps); quality weighting (low-quality anchor contributes
   less); per-track floor-XY smoothing rejects a single-frame outlier;
   stationary-cap behavior; grid bounds/cell size.
-- `calibrate/manual.py`: 4-point -> homography matches a known projective map.
-- `calibrate/depthpro.py`: plane-fit on a synthetic/saved depth array (no model
-  download in CI); the model run itself is exercised behind a marker/manual test.
+- `scene/manual.py`: 4-point -> homography matches a known projective map.
+- `scene/depthpro.py`: plane-fit + cache-write on a synthetic/saved depth array
+  (no model download in CI); the model run itself is exercised behind a
+  marker/manual test.
 
 ## Open Questions / Risks
 
@@ -224,8 +255,9 @@ when that lands — they already operate in the shared store frame.
 
 ## Sequencing
 
-1. v1 (this spec): `heatmap/` package, manual + Depth Pro backends, single-camera
-   floor frame, dwell-weighted grid, top-down render, persisted floor calib.
+1. v1 (this spec): required `scene/` Depth Pro calibration gate + cache, `heatmap/`
+   package, single-camera floor frame, dwell-weighted grid, top-down render.
 2. Later: cross-camera `T_cam_to_store` solving (stitching execution).
-3. Later/backburner: 3D drape render target; photoreal store model
+3. Later: gaze detection and other features reusing the scene-geometry cache.
+4. Later/backburner: 3D drape render target; photoreal store model
    (photogrammetry/NeRF) as an optional viz asset hung off the floor frame.
