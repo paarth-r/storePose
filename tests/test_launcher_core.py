@@ -151,6 +151,22 @@ def test_toggle_save_flips_for_any_view():
     assert toggle_(default_state(V_NO), Column.SAVE, view=V_NO).save is True
 
 
+def test_toggle_drift_flips_for_any_view():
+    assert toggle_(default_state(V), Column.DRIFT).drift is True
+    assert toggle_(default_state(V_NO), Column.DRIFT, view=V_NO).drift is True
+
+
+def test_build_run_drift_off_by_default_emits_nothing():
+    env, args = build_run(V, default_state(V))
+    assert "--predict-drift" not in args
+
+
+def test_build_run_drift_flag_when_on():
+    s = ColumnState(dashboard=True, debug=False, calib=True, strategy="auto", drift=True)
+    env, args = build_run(V, s)
+    assert args == ["--predict-drift"]
+
+
 def test_save_off_by_default_emits_nothing():
     assert default_state(V).save is False
     assert build_run(V, default_state(V))[1] == []

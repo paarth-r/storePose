@@ -326,10 +326,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     choices=("in_line", "bystander"),
                     help="Pre-filled membership for every track; the reviewer "
                          "flips the exceptions (default: in_line).")
-    ex.add_argument("--no-predict-drift", dest="predict_drift", action="store_false",
-                    help="Hold coasting tracks at their last detected box instead "
-                         "of extrapolating Kalman velocity (less drift / fewer swaps).")
-    ex.set_defaults(func=_export_cvat, predict_drift=True)
+    ex.add_argument("--predict-drift", dest="predict_drift", action="store_true",
+                    help="Extrapolate coasting tracks along Kalman velocity "
+                         "(off by default; on drifts the box away from the person).")
+    ex.set_defaults(func=_export_cvat, predict_drift=False)
 
     lb = sub.add_parser("label", help="hand-label a video's windows -> truth CSV")
     lb.add_argument("video", help="Path to the video to label.")

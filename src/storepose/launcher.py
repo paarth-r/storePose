@@ -69,6 +69,8 @@ def _cell(view: View, state, column: Column) -> str:
     if column == Column.REID:
         return {"osnet-x1": "x1", "osnet-x025": "x025",
                 "histogram": "hist", "off": "off"}[state.reid]
+    if column == Column.DRIFT:
+        return "on" if state.drift else "·"
     return "?"
 
 

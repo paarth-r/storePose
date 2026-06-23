@@ -33,10 +33,12 @@ class Column(IntEnum):
     CALIB = 6
     STRATEGY = 7
     REID = 8
+    DRIFT = 9
 
 
 COLUMNS = (Column.DASHBOARD, Column.DEBUG, Column.CONF, Column.SAVE,
-           Column.BLUR, Column.ALT, Column.CALIB, Column.STRATEGY, Column.REID)
+           Column.BLUR, Column.ALT, Column.CALIB, Column.STRATEGY, Column.REID,
+           Column.DRIFT)
 COLUMN_LABELS = {
     Column.DASHBOARD: "dash",
     Column.DEBUG: "debug",
@@ -47,6 +49,7 @@ COLUMN_LABELS = {
     Column.CALIB: "calib",
     Column.STRATEGY: "strategy",
     Column.REID: "reid",
+    Column.DRIFT: "drift",
 }
 
 
@@ -73,6 +76,7 @@ class ColumnState:
     calib: bool = False
     strategy: str = "auto"
     reid: str = "osnet-x025"
+    drift: bool = False  # predictive drift off by default; on emits --predict-drift
 
 
 def discover_views(viewscripts_dir: str | Path, calib_dir: str | Path,
@@ -117,6 +121,8 @@ def toggle(view: View, state: ColumnState, column: Column) -> ColumnState:
     if column == Column.REID:
         i = REID_CYCLE.index(state.reid)
         return replace(state, reid=REID_CYCLE[(i + 1) % len(REID_CYCLE)])
+    if column == Column.DRIFT:
+        return replace(state, drift=not state.drift)
     if not view.has_calib:
         return state  # calib + strategy disabled without a calib file
     if column == Column.CALIB:
@@ -150,6 +156,8 @@ def build_run(view: View, state: ColumnState) -> tuple[dict[str, str], list[str]
         args.append("--no-reid")
     elif state.reid != "osnet-x025":  # osnet-x025 is the app default; emit nothing
         args += ["--reid-backend", state.reid]
+    if state.drift:  # predictive drift is off by default; opt in
+        args.append("--predict-drift")
     if not state.calib:
         env["STOREPOSE_NO_CALIB"] = "1"  # suppress the script's auto --calib
     elif state.strategy != "auto":

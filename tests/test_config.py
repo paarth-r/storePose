@@ -142,6 +142,11 @@ def test_max_overlap_default_and_flag():
     assert from_args(["--max-overlap", "0.7"]).max_overlap == 0.7
 
 
+def test_predict_drift_off_by_default_and_flag_enables():
+    assert from_args([]).predict_drift is False
+    assert from_args(["--predict-drift"]).predict_drift is True
+
+
 def test_max_overlap_validation():
     with pytest.raises(ValueError):
         AppConfig(max_overlap=1.5)

@@ -120,7 +120,7 @@ class AppConfig:
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
-    predict_drift: bool = True
+    predict_drift: bool = False
     zone: str | None = None
     define_zone: bool = False
     pos_zone: str | None = None
@@ -368,9 +368,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable One-Euro keypoint smoothing.",
     )
     parser.add_argument(
-        "--no-predict-drift", dest="predict_drift", action="store_false",
-        help="Hold a coasting track at its last detected box instead of "
-             "extrapolating along Kalman velocity (less box drift / fewer swaps).",
+        "--predict-drift", dest="predict_drift", action="store_true",
+        help="Extrapolate a coasting track's box along Kalman velocity. Off by "
+             "default (the box holds its last detected position), which avoids "
+             "drift away from the person and the mis-associations it causes.",
     )
     parser.add_argument(
         "--smooth-cutoff", type=float, default=1.0,
