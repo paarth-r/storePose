@@ -29,25 +29,57 @@ def iou_matrix(dets: list[np.ndarray], tracks: list[np.ndarray]) -> np.ndarray:
 
 
 def match(
-    dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float
+    dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float,
+    *, appsim: np.ndarray | None = None, app_weight: float = 0.0,
+    app_floor: float = 0.0, motsim: np.ndarray | None = None,
+    mot_weight: float = 0.0,
 ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
-    """Associate detections to tracks by maximum IoU, gated by ``iou_thr``.
+    """Associate detections to tracks, gated by ``iou_thr``.
 
-    Returns ``(matches, unmatched_dets, unmatched_tracks)`` where ``matches`` is
-    a list of ``(det_index, track_index)`` pairs.
+    The assignment maximizes a blend of three cues, any of which can be off:
+    - **IoU** (box overlap) — always.
+    - **Appearance** (``appsim``, cosine in ``[-1, 1]``, ``NaN`` where unknown;
+      weight ``app_weight``) — StrongSORT/BoT-SORT style "looks like". A pair
+      below ``app_floor`` is rejected even at high IoU, so a person passing a
+      fixed prop isn't matched onto it.
+    - **Motion direction** (``motsim``, cosine of the angle between a track's
+      heading and the direction to the detection, ``NaN`` where undefined;
+      weight ``mot_weight``) — OC-SORT-style "went the right way", which breaks
+      a crossing tie when geometry and appearance can't.
+
+    Each cue's ``NaN`` entries fall back to IoU for that pair (neutral). All
+    weights zero / matrices ``None`` reproduces plain IoU matching. Returns
+    ``(matches, unmatched_dets, unmatched_tracks)``.
     """
     if len(dets) == 0 or len(tracks) == 0:
         return [], list(range(len(dets))), list(range(len(tracks)))
 
     m = iou_matrix(dets, tracks)
-    rows, cols = linear_sum_assignment(-m)  # maximize total IoU
+    app_w = app_weight if appsim is not None else 0.0
+    mot_w = mot_weight if motsim is not None else 0.0
+    if app_w > 0 or mot_w > 0:
+        iou_w = max(0.0, 1.0 - app_w - mot_w)
+        score = iou_w * m
+        if app_w > 0:
+            an = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
+            score = score + app_w * np.where(np.isnan(an), m, an)
+        if mot_w > 0:
+            mn = (np.clip(motsim, -1.0, 1.0) + 1.0) / 2.0
+            score = score + mot_w * np.where(np.isnan(mn), m, mn)
+    else:
+        score = m
+
+    rows, cols = linear_sum_assignment(-score)  # maximize the (blended) score
 
     matches: list[tuple[int, int]] = []
     unmatched_dets = set(range(len(dets)))
     unmatched_tracks = set(range(len(tracks)))
     for r, c in zip(rows, cols):
-        if m[r, c] >= iou_thr:
-            matches.append((int(r), int(c)))
-            unmatched_dets.discard(int(r))
-            unmatched_tracks.discard(int(c))
+        if m[r, c] < iou_thr:
+            continue  # proximity sanity always applies
+        if appsim is not None and not np.isnan(appsim[r, c]) and appsim[r, c] < app_floor:
+            continue  # appearance veto: looks nothing like this track
+        matches.append((int(r), int(c)))
+        unmatched_dets.discard(int(r))
+        unmatched_tracks.discard(int(c))
     return matches, sorted(unmatched_dets), sorted(unmatched_tracks)

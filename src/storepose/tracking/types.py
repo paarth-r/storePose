@@ -20,6 +20,10 @@ class TrackedPerson:
         color: Stable BGR color for this id.
         score: Detector person-confidence of the last detection, or ``None``
             while coasting.
+        reid_sim: Appearance similarity of the most recent re-attach, or ``None``
+            if this id was never re-identified.
+        reid_notify: True for ~1s after a re-attach, so the view can flag the
+            re-id event (and its ``reid_sim``) when ``--conf`` is on.
     """
 
     id: int
@@ -29,3 +33,5 @@ class TrackedPerson:
     coasting: bool
     color: tuple[int, int, int]
     score: float | None = None
+    reid_sim: float | None = None
+    reid_notify: bool = False

@@ -142,6 +142,28 @@ def test_max_overlap_default_and_flag():
     assert from_args(["--max-overlap", "0.7"]).max_overlap == 0.7
 
 
+def test_predict_drift_off_by_default_and_flag_enables():
+    assert from_args([]).predict_drift is False
+    assert from_args(["--predict-drift"]).predict_drift is True
+
+
+def test_coast_off_by_default_and_flag_enables():
+    assert from_args([]).coast is False
+    assert from_args(["--coast"]).coast is True
+
+
+def test_stationary_filter_on_by_default_zero_disables():
+    c = from_args([])
+    assert c.stationary_seconds == 20.0 and c.stationary_radius == 0.03
+    assert from_args(["--stationary-seconds", "0"]).stationary_seconds == 0.0
+
+
+def test_appearance_fused_association_on_by_default():
+    c = from_args([])
+    assert c.reid_assoc_weight == 0.4 and c.reid_assoc_floor == 0.6
+    assert from_args(["--reid-assoc-weight", "0"]).reid_assoc_weight == 0.0
+
+
 def test_max_overlap_validation():
     with pytest.raises(ValueError):
         AppConfig(max_overlap=1.5)
@@ -219,8 +241,8 @@ def test_reid_backend_must_be_known():
 
 def test_reid_thr_for_resolves_per_backend():
     from storepose.config import reid_thr_for
-    assert reid_thr_for("osnet-x1", None) == 0.5
-    assert reid_thr_for("osnet-x025", None) == 0.5
+    assert reid_thr_for("osnet-x1", None) == 0.8
+    assert reid_thr_for("osnet-x025", None) == 0.8
     assert reid_thr_for("histogram", None) == 0.6
     assert reid_thr_for("osnet-x1", 0.3) == 0.3    # explicit override wins
 
@@ -239,7 +261,7 @@ def test_reid_thr_override_validates_range():
 
 def test_det_conf_and_overlap_defaults():
     cfg = from_args([])
-    assert cfg.det_conf == 0.7
+    assert cfg.det_conf == 0.5
     assert cfg.det_overlap == 0.8
 
 
@@ -317,3 +339,8 @@ def test_transit_speed_default_parse_and_validation():
     assert from_args(["--transit-speed", "0"]).transit_speed == 0.0
     with pytest.raises(ValueError):
         AppConfig(transit_speed=-1.0)
+
+
+def test_assoc_motion_on_by_default():
+    assert from_args([]).reid_assoc_motion == 0.3
+    assert from_args(["--reid-assoc-motion", "0"]).reid_assoc_motion == 0.0

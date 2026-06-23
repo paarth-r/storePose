@@ -26,12 +26,31 @@ def test_debug_rows_flatten_debug_dict():
     assert row == {
         "id": 9, "state": "waiting", "wait": 3.14, "serve": 1.2,
         "speed": 0.27, "line": False, "pos": True, "reg": False, "transit": True,
+        "reid": None,
     }
 
 
 def test_debug_rows_tolerates_missing_debug():
     (row,) = _debug_rows([_status(id=2)])
     assert row["speed"] == 0.0 and row["line"] is False and row["transit"] is False
+
+
+def test_debug_rows_surface_reid_similarity_from_people():
+    import numpy as np
+
+    from storepose.tracking.types import TrackedPerson
+    s = _status(id=9, waiting=True)
+    notifying = TrackedPerson(id=9, box=np.zeros(4), keypoints=None, scores=None,
+                              coasting=False, color=(0, 0, 0),
+                              reid_sim=0.81, reid_notify=True)
+    (row,) = _debug_rows([s], [notifying])
+    assert row["reid"] == 0.81
+    # once the notif has faded, the row no longer reports a re-id
+    faded = TrackedPerson(id=9, box=np.zeros(4), keypoints=None, scores=None,
+                          coasting=False, color=(0, 0, 0),
+                          reid_sim=0.81, reid_notify=False)
+    (row2,) = _debug_rows([s], [faded])
+    assert row2["reid"] is None
 
 
 def test_scrub_clamps_to_bounds():

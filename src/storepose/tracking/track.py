@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 import numpy as np
 
 from .kalman import KalmanBoxTracker
 from .smoothing import KeypointSmoother
+
+# Cap how far back detection centers are retained for the stationary test.
+_STATIONARY_HISTORY_SECONDS = 60.0
 
 # Distinct BGR colors cycled by track id. No near-orange entry, so a person's
 # color never collides with the orange queue zone fill (drawing.ZONE_COLOR).
@@ -19,6 +24,10 @@ _PALETTE: list[tuple[int, int, int]] = [
 def color_for(track_id: int) -> tuple[int, int, int]:
     """Stable BGR color for a track id."""
     return _PALETTE[track_id % len(_PALETTE)]
+
+
+# How long (seconds) a "RE-ID <sim>" notification stays armed after a re-attach.
+REID_NOTIF_SECONDS = 1.0
 
 
 class Track:
@@ -38,10 +47,12 @@ class Track:
         beta: float,
         appearance_mem: object | None = None,
         det_score: float | None = None,
+        drift: bool = True,
     ):
         self.id = track_id
         self.det_score = det_score  # detector confidence of the last detection
         self.kalman = KalmanBoxTracker(box)
+        self._drift = drift  # False: a coasting track's box stays at last_box
         self.last_box = np.asarray(box, float)  # last *detected* box (not coasted)
         self.hits = 1
         self.time_since_update = 0
@@ -54,7 +65,66 @@ class Track:
         self.keypoints: np.ndarray | None = None
         self.scores: np.ndarray | None = None
         self.appearance_mem = appearance_mem  # opaque; owned by the AppearanceModel
+        self.reid_sim: float | None = None     # similarity of the last re-attach
+        self.reid_time_left = 0.0              # seconds the RE-ID notif stays armed
+        self._t = 0.0                          # cumulative track age (seconds)
+        self._centers: deque = deque()         # (t, cx, cy) of detected boxes
+        self._record_center(box)
         self._ingest_pose(keypoints, scores, dt)
+
+    def _record_center(self, box) -> None:
+        cx = (float(box[0]) + float(box[2])) / 2.0
+        cy = (float(box[1]) + float(box[3])) / 2.0
+        self._centers.append((self._t, cx, cy))
+
+    def last_center(self) -> tuple[float, float]:
+        """Center of the most recent detected box."""
+        if not self._centers:
+            cx = (float(self.last_box[0]) + float(self.last_box[2])) / 2.0
+            cy = (float(self.last_box[1]) + float(self.last_box[3])) / 2.0
+            return (cx, cy)
+        _, cx, cy = self._centers[-1]
+        return (cx, cy)
+
+    def velocity(self, window: float = 1.0) -> tuple[float, float]:
+        """Recent heading ``(vx, vy)`` in px/s from detected centers over the last
+        ``window`` seconds, or ``(0, 0)`` if too little history. Used for the
+        motion-direction association cue (who-went-where)."""
+        if len(self._centers) < 2:
+            return (0.0, 0.0)
+        t_last = self._centers[-1][0]
+        pts = [(t, x, y) for (t, x, y) in self._centers if t >= t_last - window]
+        if len(pts) < 2:
+            return (0.0, 0.0)
+        t0, x0, y0 = pts[0]
+        t1, x1, y1 = pts[-1]
+        span = t1 - t0
+        if span <= 0:
+            return (0.0, 0.0)
+        return ((x1 - x0) / span, (y1 - y0) / span)
+
+    def stationary(self, window: float, radius: float) -> bool:
+        """True if the detected center stayed within ``radius`` px over the last
+        ``window`` seconds — and we have a full window of history to judge.
+
+        Used to suppress fixed props (a track that never moves). A real person
+        who shifts beyond ``radius`` within the window resets it, so only a
+        genuinely motionless object is flagged.
+        """
+        if window <= 0 or not self._centers:
+            return False
+        # Window ends at the most recent *detection*, not "now": a prop that has
+        # since been coasting (no new detections) must still read as stationary
+        # at cull time, when it would otherwise enter the re-id gallery.
+        last_t = self._centers[-1][0]
+        cutoff = last_t - window
+        pts = [(t, x, y) for (t, x, y) in self._centers if t >= cutoff]
+        if not pts or (last_t - pts[0][0]) < window:
+            return False  # not enough detection history to judge
+        xs = [x for _, x, _ in pts]
+        ys = [y for _, _, y in pts]
+        span = float(np.hypot(max(xs) - min(xs), max(ys) - min(ys)))
+        return span <= radius
 
     def _ingest_pose(self, keypoints, scores, dt) -> None:
         self.scores = scores
@@ -65,15 +135,26 @@ class Track:
         else:
             self.keypoints = np.asarray(keypoints, float)
 
-    def predict(self) -> None:
-        """Advance motion; mark the track as coasting for this frame."""
+    def predict(self, dt: float = 0.0) -> None:
+        """Advance motion; mark the track as coasting for this frame.
+
+        ``dt`` (seconds since the last frame) ages the RE-ID notification so it
+        fades after ``REID_NOTIF_SECONDS`` regardless of frame rate.
+        """
         self.kalman.predict()
         self.time_since_update += 1
+        self._t += dt
+        if self.reid_time_left > 0.0:
+            self.reid_time_left = max(0.0, self.reid_time_left - dt)
+        cutoff = self._t - _STATIONARY_HISTORY_SECONDS
+        while self._centers and self._centers[0][0] < cutoff:
+            self._centers.popleft()
 
     def update(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
         """Correct with a matched detection."""
         self.kalman.update(box)
         self.last_box = np.asarray(box, float)
+        self._record_center(box)
         self.hits += 1
         self.time_since_update = 0
         if self.hits >= self.min_hits:
@@ -83,20 +164,34 @@ class Track:
         if appearance_mem is not None:
             self.appearance_mem = appearance_mem
 
-    def reactivate(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
-        """Revive a lost/coasting track at a new detection, keeping id and color."""
+    def reactivate(self, box, keypoints, scores, dt, appearance_mem=None,
+                   det_score=None, reid_sim=None) -> None:
+        """Revive a lost/coasting track at a new detection, keeping id and color.
+
+        ``reid_sim`` (appearance similarity that drove the re-attach) arms the
+        RE-ID notification for ``REID_NOTIF_SECONDS``.
+        """
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)
+        self._record_center(box)
         self.time_since_update = 0
         self.hits += 1
         self.confirmed = True
         self.det_score = det_score
+        if reid_sim is not None:
+            self.reid_sim = reid_sim
+            self.reid_time_left = REID_NOTIF_SECONDS
         self._ingest_pose(keypoints, scores, dt)
         if appearance_mem is not None:
             self.appearance_mem = appearance_mem
 
     @property
     def box(self) -> np.ndarray:
+        # With predictive drift off, a coasting track holds its last detected
+        # position instead of extrapolating along Kalman velocity (which would
+        # drift the box away from the person and cause mis-association/swaps).
+        if not self._drift and self.coasting:
+            return self.last_box
         return self.kalman.box
 
     @property

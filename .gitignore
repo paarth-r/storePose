@@ -21,7 +21,7 @@ zones/
 
 # Per-camera generated run scripts + run outputs (reference gitignored zones/)
 run.sh
-viewscripts/
+viewscripts/*
 runs/
 
 # Default-named run outputs at the repo root (run.sh / --wait-log / --busy-log)
@@ -30,3 +30,6 @@ busy.csv
 
 # Per-camera generated busy calibration (tied to gitignored videos/, like zones/)
 calib/
+
+# Scratch demo artifacts (local walkthrough only, not committed)
+demo/

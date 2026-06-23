@@ -63,6 +63,29 @@ def test_conf_overlay_changes_tracked_label():
     assert not np.array_equal(without, with_conf)  # confidence text drawn
 
 
+def test_reid_notification_drawn_only_with_conf_and_when_notifying():
+    frame = _blank()
+    reid_p = TrackedPerson(
+        id=2, box=np.array([20, 40, 100, 120], float),
+        keypoints=None, scores=None, coasting=False, color=(0, 255, 0),
+        score=0.91, reid_sim=0.78, reid_notify=True,
+    )
+    plain_p = TrackedPerson(
+        id=2, box=np.array([20, 40, 100, 120], float),
+        keypoints=None, scores=None, coasting=False, color=(0, 255, 0),
+        score=0.91, reid_sim=0.78, reid_notify=False,
+    )
+    # The RE-ID label is drawn above the box; with notify on it changes pixels
+    # there, with notify off (or conf off) it does not.
+    base = annotate_tracked(frame, [plain_p], AppConfig(show_conf=True), fps=None)
+    with_reid = annotate_tracked(frame, [reid_p], AppConfig(show_conf=True), fps=None)
+    assert not np.array_equal(base, with_reid)
+    # gated on --conf: no re-id label when show_conf is off
+    off = annotate_tracked(frame, [reid_p], AppConfig(show_conf=False), fps=None)
+    base_off = annotate_tracked(frame, [plain_p], AppConfig(show_conf=False), fps=None)
+    assert np.array_equal(off, base_off)
+
+
 def test_conf_overlay_skipped_when_score_none():
     # coasting person has score None -> --conf draws nothing extra, no crash
     frame = _blank()

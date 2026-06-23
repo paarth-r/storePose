@@ -56,7 +56,7 @@ class _ScoredYOLOX(YOLOX):
         elif outputs.shape[-1] == 5:  # onnx contains nms module
             final_boxes, final_scores = outputs[0, :, :4], outputs[0, :, 4]
             final_boxes = final_boxes / ratio
-            keep = final_scores > 0.3
+            keep = final_scores > self.score_thr  # honor the configured threshold
             final_boxes, final_scores = final_boxes[keep], final_scores[keep]
         else:
             raise NotImplementedError(f"unexpected YOLOX output shape {outputs.shape}")
@@ -102,6 +102,20 @@ def suppress_contained_boxes(boxes: np.ndarray, thr: float) -> np.ndarray:
     return boxes[_contained_keep_indices(boxes, thr)]
 
 
+def filter_confident(
+    boxes: np.ndarray, scores: np.ndarray, conf: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep only boxes whose score is ``>= conf`` (scores stay aligned).
+
+    Applied in :meth:`PersonDetector.detect` so the configured confidence is
+    always honored, regardless of any threshold baked into the ONNX export.
+    """
+    if boxes.size == 0:
+        return boxes, scores
+    mask = scores >= conf
+    return boxes[mask], scores[mask]
+
+
 class PersonDetector:
     """Detects people and returns their bounding boxes.
 
@@ -111,6 +125,7 @@ class PersonDetector:
 
     def __init__(self, spec: ModelSpec, config: AppConfig):
         self._overlap = config.det_overlap
+        self._conf = config.det_conf
         self._model = _ScoredYOLOX(
             spec.url,
             model_input_size=spec.input_size,
@@ -133,5 +148,11 @@ class PersonDetector:
         if boxes.size == 0:
             return np.empty((0, 4), dtype=np.float32), np.empty((0,), dtype=np.float32)
         boxes = boxes.reshape(-1, 4)
+        scores = scores.reshape(-1)
+        # Honor the configured confidence regardless of the ONNX's baked-in
+        # threshold (some exports embed NMS at a fixed low score floor).
+        boxes, scores = filter_confident(boxes, scores, self._conf)
+        if boxes.size == 0:
+            return np.empty((0, 4), dtype=np.float32), np.empty((0,), dtype=np.float32)
         idx = _contained_keep_indices(boxes, self._overlap)
-        return boxes[idx], scores.reshape(-1)[idx]
+        return boxes[idx], scores[idx]

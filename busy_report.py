@@ -30,8 +30,15 @@ from storepose.busy.report import (
     write_levels,
 )
 from storepose.busy.types import METRICS, BusyThresholds
+from storepose.eval.cvat_import import (
+    parse_cvat_xml,
+    read_occupancy_csv,
+    sample_occupancy_gt,
+    write_occupancy_csv,
+)
 from storepose.eval.labeling import enumerate_windows, level_for_key, unlabeled
 from storepose.eval.metrics import evaluate
+from storepose.eval.occupancy_eval import occupancy_eval
 
 
 def _aggregate(args: argparse.Namespace) -> int:
@@ -82,6 +89,104 @@ def _eval(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 1
     print(evaluate(truth, pred).format())
+    return 0
+
+
+def _import_cvat(args: argparse.Namespace) -> int:
+    try:
+        with open(args.export) as f:
+            tracks = parse_cvat_xml(f.read())
+    except FileNotFoundError:
+        print(f"File not found: {args.export}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Failed to parse {args.export}: {exc}", file=sys.stderr)
+        return 1
+    if not tracks:
+        print(f"No tracks in {args.export}; nothing to import.", file=sys.stderr)
+        return 1
+    samples = sample_occupancy_gt(tracks, fps=args.fps, step=args.step)
+    write_occupancy_csv(args.output, samples)
+    print(
+        f"{len(tracks)} track(s) -> {len(samples)} occupancy sample(s) "
+        f"at {args.step}s; wrote {args.output}"
+    )
+    return 0
+
+
+def _eval_occupancy(args: argparse.Namespace) -> int:
+    gt = read_occupancy_csv(args.gt)
+    waits = read_waits(args.waits)
+    if not waits:
+        print(f"No waits in {args.waits}; nothing to score.", file=sys.stderr)
+        return 1
+    pred = sample_occupancy(waits, step=args.step)
+    rep = occupancy_eval(gt, pred)
+    if rep.n == 0:
+        print(
+            "No overlapping timestamps between GT and predicted occupancy. "
+            "Did you use the same --step for import-cvat and the pipeline?",
+            file=sys.stderr,
+        )
+        return 1
+    print(rep.format())
+    return 0
+
+
+def _export_cvat(args: argparse.Namespace) -> int:
+    import cv2  # local: only the pipeline driver needs OpenCV/model deps
+
+    from storepose.config import AppConfig
+    from storepose.eval.cvat_export import build_box_tracks, tracks_to_cvat_xml
+    from storepose.pipeline import PosePipeline
+    from storepose.runner import build_tracker
+
+    cap = cv2.VideoCapture(args.source)
+    if not cap.isOpened():
+        print(f"Could not open {args.source}", file=sys.stderr)
+        return 1
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    limit = total if args.max_frames <= 0 else min(total, args.max_frames)
+
+    config = AppConfig(source=args.source, mode=args.mode, device=args.device,
+                       predict_drift=args.predict_drift)
+    print(f"Loading models (mode={args.mode}, device={args.device})...")
+    pipeline = PosePipeline(config)
+    tracker = build_tracker(config, fps)
+    dt = 1.0 / fps
+
+    per_frame: dict[int, list[tuple[int, tuple[float, float, float, float]]]] = {}
+    processed = 0
+    for frame_idx in range(limit):
+        ok, frame = cap.read()
+        if not ok:
+            break
+        result = pipeline.process(frame)
+        people = tracker.update(result, dt, frame)
+        per_frame[frame_idx] = [
+            (int(p.id), (float(p.box[0]), float(p.box[1]),
+                         float(p.box[2]), float(p.box[3])))
+            for p in people
+        ]
+        processed += 1
+        if processed % 100 == 0:
+            print(f"  {processed}/{limit} frames, {len(people)} people")
+    cap.release()
+
+    tracks = build_box_tracks(
+        per_frame, total_frames=processed,
+        default_membership=args.membership_default,
+    )
+    xml = tracks_to_cvat_xml(tracks, width=width, height=height)
+    with open(args.output, "w") as f:
+        f.write(xml)
+    print(
+        f"{len(tracks)} track(s) over {processed} frame(s) "
+        f"({width}x{height}@{fps:.0f}fps) -> {args.output}"
+    )
     return 0
 
 
@@ -184,6 +289,47 @@ def _build_parser() -> argparse.ArgumentParser:
     e.add_argument("pred", help="Predicted busy CSV (from aggregate -o).")
     e.add_argument("truth", help="Ground-truth CSV (window_index,level).")
     e.set_defaults(func=_eval)
+
+    ic = sub.add_parser("import-cvat",
+                        help="CVAT point-track XML -> occupancy GT CSV")
+    ic.add_argument("export", help="Path to a CVAT-for-video XML export.")
+    ic.add_argument("--fps", type=float, required=True,
+                    help="Clip frame rate; maps CVAT frame numbers to seconds.")
+    ic.add_argument("--step", type=float, default=1.0,
+                    help="Occupancy sampling step in seconds (default: 1.0).")
+    ic.add_argument("-o", "--output", required=True, metavar="PATH",
+                    help="Occupancy GT CSV to write (t_s,occupancy).")
+    ic.set_defaults(func=_import_cvat)
+
+    eo = sub.add_parser("eval-occupancy",
+                        help="score predicted occupancy (from waits) vs. GT")
+    eo.add_argument("gt", help="Occupancy GT CSV (from import-cvat).")
+    eo.add_argument("waits", help="Wait-log CSV (from --wait-log).")
+    eo.add_argument("--step", type=float, default=1.0,
+                    help="Sampling step; must match the import-cvat --step "
+                         "(default: 1.0).")
+    eo.set_defaults(func=_eval_occupancy)
+
+    ex = sub.add_parser("export-cvat",
+                        help="run the pipeline -> CVAT box-track XML for review")
+    ex.add_argument("source", help="Path to the video to pre-annotate.")
+    ex.add_argument("-o", "--output", required=True, metavar="PATH",
+                    help="CVAT-for-video 1.1 XML to write.")
+    ex.add_argument("--mode", default="balanced",
+                    help="Pose model mode (default: balanced).")
+    ex.add_argument("--device", default="mps",
+                    help="Inference device: mps or cpu (default: mps).")
+    ex.add_argument("--max-frames", type=int, default=0,
+                    help="Only process the first N frames; 0 = whole clip "
+                         "(default: 0).")
+    ex.add_argument("--membership-default", default="in_line",
+                    choices=("in_line", "bystander"),
+                    help="Pre-filled membership for every track; the reviewer "
+                         "flips the exceptions (default: in_line).")
+    ex.add_argument("--predict-drift", dest="predict_drift", action="store_true",
+                    help="Extrapolate coasting tracks along Kalman velocity "
+                         "(off by default; on drifts the box away from the person).")
+    ex.set_defaults(func=_export_cvat, predict_drift=False)
 
     lb = sub.add_parser("label", help="hand-label a video's windows -> truth CSV")
     lb.add_argument("video", help="Path to the video to label.")

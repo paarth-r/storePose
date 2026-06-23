@@ -104,6 +104,15 @@ def annotate_tracked(
         cv2.rectangle(canvas, (x1, y1 - th - 6), (x1 + tw + 4, y1), p.color, -1)
         cv2.putText(canvas, label, (x1 + 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (0, 0, 0), 1, cv2.LINE_AA)
+        # RE-ID event: a brief "RE-ID <sim>" tag above the id label (fades after
+        # ~1s, set by the tracker). Only when --conf is on.
+        if config.show_conf and p.reid_notify and p.reid_sim is not None:
+            rlabel = f"RE-ID {p.reid_sim:.2f}"
+            (rw, rh), _ = cv2.getTextSize(rlabel, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            ry = y1 - th - 10  # sits just above the id label band
+            cv2.rectangle(canvas, (x1, ry - rh - 4), (x1 + rw + 4, ry), p.color, -1)
+            cv2.putText(canvas, rlabel, (x1 + 2, ry - 2), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 0, 0), 1, cv2.LINE_AA)
         if p.keypoints is not None and p.scores is not None:
             canvas = draw_skeleton(
                 canvas, p.keypoints[None, ...], p.scores[None, ...],

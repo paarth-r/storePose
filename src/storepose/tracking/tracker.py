@@ -88,6 +88,13 @@ class MultiObjectTracker:
         reid: bool = False,
         reid_max_age: int = 150,
         reid_thr: float = 0.6,
+        predict_drift: bool = True,
+        coast: bool = False,
+        stationary_seconds: float = 0.0,
+        stationary_radius: float = 0.03,
+        assoc_app_weight: float = 0.0,
+        assoc_app_floor: float = 0.0,
+        assoc_mot_weight: float = 0.0,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -100,9 +107,24 @@ class MultiObjectTracker:
         self._reid = reid
         self._reid_max_age = reid_max_age
         self._reid_thr = reid_thr
+        self._predict_drift = predict_drift
+        self._coast = coast
+        self._stationary_seconds = stationary_seconds
+        self._stationary_radius = stationary_radius
+        self._assoc_app_weight = assoc_app_weight
+        self._assoc_app_floor = assoc_app_floor
+        self._assoc_mot_weight = assoc_mot_weight
+        self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
         self._next_id = 0
+
+    def _is_stationary(self, t: Track) -> bool:
+        """A confirmed track that hasn't moved over the stationary window — a
+        fixed prop. Excluded from output and from re-id candidacy."""
+        return (self._stationary_seconds > 0 and self._diag > 0
+                and t.stationary(self._stationary_seconds,
+                                 self._stationary_radius * self._diag))
 
     def update(self, result, dt: float, frame=None) -> list[TrackedPerson]:
         boxes = result.boxes
@@ -111,6 +133,8 @@ class MultiObjectTracker:
         det_scores = result.det_scores
         n = len(boxes)
 
+        if frame is not None:
+            self._diag = float(np.hypot(frame.shape[1], frame.shape[0]))
         use_reid = self._reid and self._appearance is not None and frame is not None
         if use_reid:
             det_descs = self._appearance.extract_batch(frame, boxes, keypoints, scores)
@@ -119,17 +143,51 @@ class MultiObjectTracker:
 
         # 1. predict existing tracks forward; age the lost gallery
         for t in self._tracks:
-            t.predict()
+            t.predict(dt)
         if use_reid:
             for e in self._lost:
                 e.lost_age += 1
             self._lost = [e for e in self._lost if e.lost_age <= self._reid_max_age]
 
-        # 2. associate detections to predicted tracks by IoU
+        # 2. associate detections to predicted tracks by IoU, optionally fusing
+        #    appearance into the primary cost so a passing person isn't matched
+        #    onto an overlapping but dissimilar-looking track (e.g. a fixed prop)
         det_boxes = [boxes[i] for i in range(n)]
         track_boxes = [t.box for t in self._tracks]
+        appsim = None
+        if use_reid and self._assoc_app_weight > 0 and self._tracks:
+            appsim = np.full((n, len(self._tracks)), np.nan, dtype=np.float32)
+            for d in range(n):
+                dd = det_descs[d]
+                if dd is None:
+                    continue
+                for j, t in enumerate(self._tracks):
+                    if t.appearance_mem is not None:
+                        appsim[d, j] = self._appearance.score(t.appearance_mem, dd)
+        # motion-direction cue: does the detection lie along the track's heading?
+        motsim = None
+        if self._assoc_mot_weight > 0 and self._diag > 0 and self._tracks:
+            motsim = np.full((n, len(self._tracks)), np.nan, dtype=np.float32)
+            min_speed = 0.03 * self._diag  # px/s; below this a track has no heading
+            for j, t in enumerate(self._tracks):
+                vx, vy = t.velocity()
+                speed = (vx * vx + vy * vy) ** 0.5
+                if speed < min_speed:
+                    continue  # stationary/jitter -> no direction to be consistent with
+                ux, uy = vx / speed, vy / speed
+                lx, ly = t.last_center()
+                for d in range(n):
+                    b = boxes[d]
+                    wx = (float(b[0]) + float(b[2])) / 2.0 - lx
+                    wy = (float(b[1]) + float(b[3])) / 2.0 - ly
+                    wl = (wx * wx + wy * wy) ** 0.5
+                    if wl > 1e-6:
+                        motsim[d, j] = ux * (wx / wl) + uy * (wy / wl)
         matches, unmatched_dets, unmatched_tracks = match(
-            det_boxes, track_boxes, self.iou_thr
+            det_boxes, track_boxes, self.iou_thr,
+            appsim=appsim, app_weight=self._assoc_app_weight,
+            app_floor=self._assoc_app_floor,
+            motsim=motsim, mot_weight=self._assoc_mot_weight,
         )
 
         # 3. update matched tracks
@@ -160,6 +218,7 @@ class MultiObjectTracker:
                     min_hits=self.min_hits, smooth=self.smooth,
                     min_cutoff=self.min_cutoff, beta=self.beta,
                     appearance_mem=mem, det_score=float(det_scores[d]),
+                    drift=self._predict_drift,
                 )
             )
             self._next_id += 1
@@ -170,7 +229,10 @@ class MultiObjectTracker:
             if t.time_since_update >= 1 and not t.confirmed:
                 continue
             if t.time_since_update > self.max_age:
-                if use_reid and t.confirmed and t.appearance_mem is not None:
+                if (use_reid and t.confirmed and t.appearance_mem is not None
+                        and not self._is_stationary(t)):
+                    # a stationary prop never enters the gallery -> it can't be
+                    # revived onto a moving person by mere appearance similarity
                     self._lost.append(
                         _LostEntry(track=t, center=_center(t.last_box), lost_age=0)
                     )
@@ -187,6 +249,16 @@ class MultiObjectTracker:
             if not t.confirmed:
                 continue
             coasting = t.coasting
+            # No-coast (default): a track with no detection this frame is not
+            # emitted. It still lives internally (max_age / gallery) so a
+            # returning detection re-attaches the same id by IoU or appearance.
+            if coasting and not self._coast:
+                continue
+            # Stationary filter: a confirmed track that hasn't moved beyond
+            # stationary_radius over stationary_seconds is a fixed prop, not a
+            # person; suppress it (a person who shifts resets the window).
+            if self._is_stationary(t):
+                continue
             people.append(
                 TrackedPerson(
                     id=t.id,
@@ -196,6 +268,8 @@ class MultiObjectTracker:
                     coasting=coasting,
                     color=t.color,
                     score=None if coasting else t.det_score,
+                    reid_sim=t.reid_sim,
+                    reid_notify=t.reid_time_left > 0.0,
                 )
             )
         return people
@@ -216,8 +290,8 @@ class MultiObjectTracker:
         cands: list[_Candidate] = []
         for tr_idx in unmatched_tracks:
             t = self._tracks[tr_idx]
-            if not t.confirmed or t.appearance_mem is None:
-                continue
+            if not t.confirmed or t.appearance_mem is None or self._is_stationary(t):
+                continue  # never re-attach a moving detection onto a static prop
             cands.append(_Candidate(t, None, _center(t.last_box), t.time_since_update))
         for e in self._lost:
             if e.track.appearance_mem is None:
@@ -261,7 +335,8 @@ class MultiObjectTracker:
             cand = cands[ci]
             mem = self._appearance.update_memory(cand.track.appearance_mem, det_descs[d])
             cand.track.reactivate(boxes[d], keypoints[d], scores[d], dt,
-                                  appearance_mem=mem, det_score=float(det_scores[d]))
+                                  appearance_mem=mem, det_score=float(det_scores[d]),
+                                  reid_sim=1.0 - _cost)
             if cand.lost is not None:
                 self._lost.remove(cand.lost)
                 self._tracks.append(cand.track)

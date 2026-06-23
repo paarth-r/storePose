@@ -23,7 +23,7 @@ def test_track_confirms_after_min_hits():
 
 
 def test_detector_score_propagates_and_clears_on_coast():
-    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False)
+    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
     box = [10, 10, 50, 90]
     out = tr.update(make_result([box]), 1 / 30)
     assert abs(out[0].score - 0.9) < 1e-6     # detector score reaches the person
@@ -46,7 +46,7 @@ def test_two_detections_get_distinct_ids():
 
 
 def test_coasts_then_dies():
-    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False)
+    tr = MultiObjectTracker(max_age=3, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
     box = [10, 10, 50, 90]
     assert tr.update(make_result([box]), 1 / 30)[0].coasting is False
     o1 = tr.update(make_result([]), 1 / 30)
@@ -54,6 +54,83 @@ def test_coasts_then_dies():
     tr.update(make_result([]), 1 / 30)
     assert len(tr.update(make_result([]), 1 / 30)) == 1  # t=3, still within max_age
     assert tr.update(make_result([]), 1 / 30) == []      # t=4, culled
+
+
+def test_no_coast_default_omits_undetected_track():
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False)  # coast off
+    box = [10, 10, 50, 90]
+    assert tr.update(make_result([box]), 1 / 30)[0].coasting is False
+    assert tr.update(make_result([]), 1 / 30) == []  # no detection -> not emitted
+
+
+def test_coast_flag_emits_held_track():
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False, coast=True)
+    box = [10, 10, 50, 90]
+    tr.update(make_result([box]), 1 / 30)
+    out = tr.update(make_result([]), 1 / 30)
+    assert len(out) == 1 and out[0].coasting is True
+
+
+def test_no_coast_keeps_id_when_detection_returns():
+    # Suppressing coasting output must not lose identity: the track survives
+    # internally, so a returning detection re-matches the same id by IoU.
+    tr = MultiObjectTracker(max_age=5, min_hits=1, iou_thr=0.3, smooth=False)
+    box = [10, 10, 50, 90]
+    assert tr.update(make_result([box]), 1 / 30)[0].id == 0
+    assert tr.update(make_result([]), 1 / 30) == []      # gap frame: not emitted
+    out = tr.update(make_result([box]), 1 / 30)          # detection returns
+    assert len(out) == 1 and out[0].id == 0              # same id, no new track
+
+
+def test_stationary_track_suppressed_after_window():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False,
+                            stationary_seconds=1.0, stationary_radius=0.05)
+    box = [100, 100, 140, 180]
+    first = tr.update(make_result([box]), 0.5, frame)
+    assert len(first) == 1                      # emitted before enough history
+    out = first
+    for _ in range(5):                          # > 1s of no movement
+        out = tr.update(make_result([box]), 0.5, frame)
+    assert out == []                            # flagged as a static prop
+
+
+def test_moving_track_not_suppressed_by_stationary_filter():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False,
+                            stationary_seconds=1.0, stationary_radius=0.02)
+    x, out = 50, None
+    for _ in range(6):
+        out = tr.update(make_result([[x, 100, x + 40, 180]]), 0.5, frame)
+        x += 40                                 # keeps moving right
+    assert len(out) == 1                        # a mover is never suppressed
+
+
+def test_stationary_filter_off_by_default():
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=100, min_hits=1, iou_thr=0.3, smooth=False)
+    box = [100, 100, 140, 180]
+    out = None
+    for _ in range(8):
+        out = tr.update(make_result([box]), 0.5, frame)
+    assert len(out) == 1                        # no filter unless configured
+
+
+def test_stationary_prop_excluded_from_reid():
+    # A static prop must never be a re-id target: a moving detection elsewhere
+    # with near-identical appearance (e.g. both dark) must NOT revive its id.
+    frame = np.zeros((400, 400, 3), np.uint8)
+    tr = MultiObjectTracker(max_age=2, min_hits=1, iou_thr=0.3, smooth=False,
+                            appearance=_ConstScoreStub(0.99), reid=True,
+                            reid_max_age=200, reid_thr=0.5,
+                            stationary_seconds=1.0, stationary_radius=0.05)
+    prop = [100, 100, 140, 180]
+    for _ in range(5):                      # >1s stationary -> flagged as a prop
+        tr.update(make_result([prop]), 0.5, frame)
+    for _ in range(4):                      # age the prop out
+        tr.update(make_result([]), 0.5, frame)
+    out = tr.update(make_result([[300, 300, 340, 380]]), 0.5, frame)  # new, matching look
+    assert out and all(p.id != 0 for p in out)   # prop's id 0 was not revived
 
 
 def test_reentry_gets_new_id():
@@ -187,6 +264,25 @@ def test_reattach_same_appearance_revives_id():
     back = [110, 105, 150, 185]
     out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, red)]))
     assert len(out2) == 1 and out2[0].id == 0   # same id revived
+
+
+def test_reattach_emits_reid_notification_with_similarity():
+    tr = MultiObjectTracker(max_age=2, min_hits=1, iou_thr=0.3, smooth=False,
+                            appearance=_ConstScoreStub(0.78), reid=True,
+                            reid_max_age=50, reid_thr=0.5)
+    box = [100, 100, 140, 180]
+    f = _frame([(box, (0, 0, 220))])
+    out = tr.update(make_result([box]), 1 / 30, f)
+    assert out[0].reid_notify is False        # fresh track: no re-id yet
+    assert out[0].reid_sim is None
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(5):                        # age out to the gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, (0, 0, 220))]))
+    assert len(out2) == 1 and out2[0].id == 0
+    assert out2[0].reid_notify is True        # re-attach armed the notification
+    assert abs(out2[0].reid_sim - 0.78) < 1e-6
 
 
 def test_reattach_different_appearance_gets_new_id():

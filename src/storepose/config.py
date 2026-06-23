@@ -11,7 +11,7 @@ from .busy.types import METRICS as BUSY_METRICS
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
 REID_BACKENDS = ("osnet-x1", "osnet-x025", "histogram")
-_REID_THR_DEFAULTS = {"osnet-x1": 0.5, "osnet-x025": 0.5, "histogram": 0.6}
+_REID_THR_DEFAULTS = {"osnet-x1": 0.8, "osnet-x025": 0.8, "histogram": 0.6}
 
 
 def reid_thr_for(backend: str, override: float | None) -> float:
@@ -98,7 +98,7 @@ class AppConfig:
 
     source: int | str = 0
     mode: str = "balanced"
-    det_conf: float = 0.7
+    det_conf: float = 0.5
     det_overlap: float = 0.8
     kpt_thr: float = 0.5
     device: str = "mps"
@@ -117,9 +117,16 @@ class AppConfig:
     reid_backend: str = "osnet-x025"
     reid_weights: str | None = None
     reid_thr: float | None = None
+    reid_assoc_weight: float = 0.4
+    reid_assoc_floor: float = 0.6
+    reid_assoc_motion: float = 0.3
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
+    predict_drift: bool = False
+    coast: bool = False
+    stationary_seconds: float = 20.0
+    stationary_radius: float = 0.03
     zone: str | None = None
     define_zone: bool = False
     pos_zone: str | None = None
@@ -268,8 +275,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--det-conf",
         type=float,
-        default=0.7,
-        help="Person detection confidence threshold (default: 0.7).",
+        default=0.5,
+        help="Person detection confidence threshold (default: 0.5). Props are "
+             "not separable by score (use the stationary filter); a higher "
+             "threshold mainly costs recall on partially-occluded people.",
     )
     parser.add_argument(
         "--det-overlap",
@@ -360,11 +369,51 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reid-thr", type=float, default=None,
         help="Appearance similarity floor for re-attach, in [-1,1]. Default "
-             "resolves per backend (osnet: 0.5, histogram: 0.6).",
+             "resolves per backend (osnet: 0.8, histogram: 0.6).",
+    )
+    parser.add_argument(
+        "--reid-assoc-weight", type=float, default=0.4,
+        help="Weight of appearance vs IoU in the primary association cost "
+             "(0 = IoU only; fuses 'looks like' into the match). Default 0.4.",
+    )
+    parser.add_argument(
+        "--reid-assoc-floor", type=float, default=0.6,
+        help="Reject a primary match whose appearance similarity is below this, "
+             "even at high IoU (stops a person matching onto a prop; measured prop-vs-person <=0.53, self-sim >=0.77). Default 0.6.",
+    )
+    parser.add_argument(
+        "--reid-assoc-motion", type=float, default=0.3,
+        help="Weight of motion-direction (who-went-where) in the association "
+             "cost (0 = off). Breaks crossing ties when IoU and appearance "
+             "cannot. Default 0.3.",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
         help="Disable One-Euro keypoint smoothing.",
+    )
+    parser.add_argument(
+        "--predict-drift", dest="predict_drift", action="store_true",
+        help="Extrapolate a coasting track's box along Kalman velocity. Off by "
+             "default (the box holds its last detected position), which avoids "
+             "drift away from the person and the mis-associations it causes.",
+    )
+    parser.add_argument(
+        "--coast", dest="coast", action="store_true",
+        help="Keep emitting a track that has no detection this frame (held box) "
+             "for up to --hold-seconds. Off by default: a track with no detection "
+             "is dropped immediately; a returning detection re-attaches its id by "
+             "range/time/appearance.",
+    )
+    parser.add_argument(
+        "--stationary-seconds", type=float, default=20.0,
+        help="Suppress a track whose center stays within --stationary-radius for "
+             "this many seconds (a fixed prop, not a person); 0 disables "
+             "(default: 20).",
+    )
+    parser.add_argument(
+        "--stationary-radius", type=float, default=0.03,
+        help="Movement radius for the stationary filter, as a fraction of the "
+             "frame diagonal (default: 0.03).",
     )
     parser.add_argument(
         "--smooth-cutoff", type=float, default=1.0,
@@ -604,7 +653,14 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_backend=args.reid_backend,
         reid_weights=args.reid_weights,
         reid_thr=args.reid_thr,
+        reid_assoc_weight=args.reid_assoc_weight,
+        reid_assoc_floor=args.reid_assoc_floor,
+        reid_assoc_motion=args.reid_assoc_motion,
         smooth=args.smooth,
+        predict_drift=args.predict_drift,
+        coast=args.coast,
+        stationary_seconds=args.stationary_seconds,
+        stationary_radius=args.stationary_radius,
         smooth_cutoff=args.smooth_cutoff,
         smooth_beta=args.smooth_beta,
         zone=args.zone,
