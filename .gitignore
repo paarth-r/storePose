@@ -22,7 +22,6 @@ zones/
 # Per-camera generated run scripts + run outputs (reference gitignored zones/)
 run.sh
 viewscripts/*
-!viewscripts/cvat-annotate.sh
 runs/
 
 # Default-named run outputs at the repo root (run.sh / --wait-log / --busy-log)
