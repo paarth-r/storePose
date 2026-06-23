@@ -121,7 +121,7 @@ class MultiObjectTracker:
 
         # 1. predict existing tracks forward; age the lost gallery
         for t in self._tracks:
-            t.predict()
+            t.predict(dt)
         if use_reid:
             for e in self._lost:
                 e.lost_age += 1
@@ -199,6 +199,8 @@ class MultiObjectTracker:
                     coasting=coasting,
                     color=t.color,
                     score=None if coasting else t.det_score,
+                    reid_sim=t.reid_sim,
+                    reid_notify=t.reid_time_left > 0.0,
                 )
             )
         return people
@@ -264,7 +266,8 @@ class MultiObjectTracker:
             cand = cands[ci]
             mem = self._appearance.update_memory(cand.track.appearance_mem, det_descs[d])
             cand.track.reactivate(boxes[d], keypoints[d], scores[d], dt,
-                                  appearance_mem=mem, det_score=float(det_scores[d]))
+                                  appearance_mem=mem, det_score=float(det_scores[d]),
+                                  reid_sim=1.0 - _cost)
             if cand.lost is not None:
                 self._lost.remove(cand.lost)
                 self._tracks.append(cand.track)

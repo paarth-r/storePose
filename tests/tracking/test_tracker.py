@@ -189,6 +189,25 @@ def test_reattach_same_appearance_revives_id():
     assert len(out2) == 1 and out2[0].id == 0   # same id revived
 
 
+def test_reattach_emits_reid_notification_with_similarity():
+    tr = MultiObjectTracker(max_age=2, min_hits=1, iou_thr=0.3, smooth=False,
+                            appearance=_ConstScoreStub(0.78), reid=True,
+                            reid_max_age=50, reid_thr=0.5)
+    box = [100, 100, 140, 180]
+    f = _frame([(box, (0, 0, 220))])
+    out = tr.update(make_result([box]), 1 / 30, f)
+    assert out[0].reid_notify is False        # fresh track: no re-id yet
+    assert out[0].reid_sim is None
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(5):                        # age out to the gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    back = [110, 105, 150, 185]
+    out2 = tr.update(make_result([back]), 1 / 30, _frame([(back, (0, 0, 220))]))
+    assert len(out2) == 1 and out2[0].id == 0
+    assert out2[0].reid_notify is True        # re-attach armed the notification
+    assert abs(out2[0].reid_sim - 0.78) < 1e-6
+
+
 def test_reattach_different_appearance_gets_new_id():
     tr = _reid_tracker()
     box = [100, 100, 140, 180]

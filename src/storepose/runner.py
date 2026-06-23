@@ -132,8 +132,13 @@ def _person_state(s) -> str:
     return "out"
 
 
-def _debug_rows(statuses) -> list[dict]:
-    """Per-person reasoning rows for the dashboard Debug tab."""
+def _debug_rows(statuses, people=None) -> list[dict]:
+    """Per-person reasoning rows for the dashboard Debug tab.
+
+    ``people`` (the tracked persons this frame) supplies the re-id similarity:
+    a row reports ``reid`` only while that id's RE-ID notification is armed.
+    """
+    reid_by_id = {p.id: p.reid_sim for p in (people or []) if p.reid_notify}
     rows = []
     for s in statuses:
         d = s.debug or {}
@@ -147,6 +152,7 @@ def _debug_rows(statuses) -> list[dict]:
             "pos": bool(d.get("pos", False)),
             "reg": bool(d.get("reg", False)),
             "transit": bool(d.get("transit", False)),
+            "reid": reid_by_id.get(s.id),
         })
     return rows
 
@@ -372,7 +378,7 @@ class Runner:
                         canvas = annotate_tracked(frame, people, config, fps)
                         if analyzer is not None:
                             qresult = analyzer.update(people, dt)
-                            rows = _debug_rows(qresult.statuses)
+                            rows = _debug_rows(qresult.statuses, people)
                             canvas = annotate_queue(canvas, people, qresult, zone, config,
                                                     pos_zone=pos_zone, alt_zone=alt_zone)
                             completed = qresult.completed

@@ -55,6 +55,32 @@ def _moving_track(drift: bool) -> Track:
     return t
 
 
+def test_new_track_has_no_reid_event():
+    t = Track(0, _box(), _kpts(), np.ones(17), dt=1 / 30,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.0)
+    assert t.reid_sim is None
+    assert t.reid_time_left == 0.0
+
+
+def test_reactivate_records_reid_similarity_and_arms_notif():
+    t = Track(0, _box(), _kpts(), np.ones(17), dt=1 / 30,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.0)
+    t.predict()  # lost it for a frame
+    t.reactivate(_box(), _kpts(), np.ones(17), 1 / 30, reid_sim=0.78)
+    assert t.reid_sim == 0.78
+    assert t.reid_time_left > 0.0
+
+
+def test_reid_notif_fades_after_about_one_second():
+    t = Track(0, _box(), _kpts(), np.ones(17), dt=1 / 30,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.0)
+    t.reactivate(_box(), _kpts(), np.ones(17), 1 / 30, reid_sim=0.9)
+    assert t.reid_time_left > 0.0
+    for _ in range(40):  # >1s of frames at 30fps
+        t.predict(1 / 30)
+    assert t.reid_time_left == 0.0
+
+
 def test_no_drift_freezes_coasting_box_at_last_detection():
     t = _moving_track(drift=False)
     last = t.last_box.copy()

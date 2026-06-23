@@ -21,6 +21,10 @@ def color_for(track_id: int) -> tuple[int, int, int]:
     return _PALETTE[track_id % len(_PALETTE)]
 
 
+# How long (seconds) a "RE-ID <sim>" notification stays armed after a re-attach.
+REID_NOTIF_SECONDS = 1.0
+
+
 class Track:
     """One person's track. Created from a detection, updated or coasted per frame."""
 
@@ -56,6 +60,8 @@ class Track:
         self.keypoints: np.ndarray | None = None
         self.scores: np.ndarray | None = None
         self.appearance_mem = appearance_mem  # opaque; owned by the AppearanceModel
+        self.reid_sim: float | None = None     # similarity of the last re-attach
+        self.reid_time_left = 0.0              # seconds the RE-ID notif stays armed
         self._ingest_pose(keypoints, scores, dt)
 
     def _ingest_pose(self, keypoints, scores, dt) -> None:
@@ -67,10 +73,16 @@ class Track:
         else:
             self.keypoints = np.asarray(keypoints, float)
 
-    def predict(self) -> None:
-        """Advance motion; mark the track as coasting for this frame."""
+    def predict(self, dt: float = 0.0) -> None:
+        """Advance motion; mark the track as coasting for this frame.
+
+        ``dt`` (seconds since the last frame) ages the RE-ID notification so it
+        fades after ``REID_NOTIF_SECONDS`` regardless of frame rate.
+        """
         self.kalman.predict()
         self.time_since_update += 1
+        if self.reid_time_left > 0.0:
+            self.reid_time_left = max(0.0, self.reid_time_left - dt)
 
     def update(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
         """Correct with a matched detection."""
@@ -85,14 +97,22 @@ class Track:
         if appearance_mem is not None:
             self.appearance_mem = appearance_mem
 
-    def reactivate(self, box, keypoints, scores, dt, appearance_mem=None, det_score=None) -> None:
-        """Revive a lost/coasting track at a new detection, keeping id and color."""
+    def reactivate(self, box, keypoints, scores, dt, appearance_mem=None,
+                   det_score=None, reid_sim=None) -> None:
+        """Revive a lost/coasting track at a new detection, keeping id and color.
+
+        ``reid_sim`` (appearance similarity that drove the re-attach) arms the
+        RE-ID notification for ``REID_NOTIF_SECONDS``.
+        """
         self.kalman = KalmanBoxTracker(box)
         self.last_box = np.asarray(box, float)
         self.time_since_update = 0
         self.hits += 1
         self.confirmed = True
         self.det_score = det_score
+        if reid_sim is not None:
+            self.reid_sim = reid_sim
+            self.reid_time_left = REID_NOTIF_SECONDS
         self._ingest_pose(keypoints, scores, dt)
         if appearance_mem is not None:
             self.appearance_mem = appearance_mem
