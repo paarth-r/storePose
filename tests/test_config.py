@@ -339,3 +339,8 @@ def test_transit_speed_default_parse_and_validation():
     assert from_args(["--transit-speed", "0"]).transit_speed == 0.0
     with pytest.raises(ValueError):
         AppConfig(transit_speed=-1.0)
+
+
+def test_assoc_motion_on_by_default():
+    assert from_args([]).reid_assoc_motion == 0.3
+    assert from_args(["--reid-assoc-motion", "0"]).reid_assoc_motion == 0.0

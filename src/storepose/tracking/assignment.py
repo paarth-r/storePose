@@ -31,29 +31,41 @@ def iou_matrix(dets: list[np.ndarray], tracks: list[np.ndarray]) -> np.ndarray:
 def match(
     dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float,
     *, appsim: np.ndarray | None = None, app_weight: float = 0.0,
-    app_floor: float = 0.0,
+    app_floor: float = 0.0, motsim: np.ndarray | None = None,
+    mot_weight: float = 0.0,
 ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
     """Associate detections to tracks, gated by ``iou_thr``.
 
-    With ``appsim`` (a ``(len(dets), len(tracks))`` cosine-similarity matrix in
-    ``[-1, 1]``, ``NaN`` where unknown) and ``app_weight > 0``, appearance is
-    fused into the **primary** cost (StrongSORT/BoT-SORT style): the assignment
-    maximizes a blend of IoU and looks, and a pair whose appearance is below
-    ``app_floor`` is rejected even at high IoU — so a person passing in front of
-    a fixed prop is not matched onto the prop's track. ``appsim=None`` /
-    ``app_weight=0`` reproduces plain IoU matching.
+    The assignment maximizes a blend of three cues, any of which can be off:
+    - **IoU** (box overlap) — always.
+    - **Appearance** (``appsim``, cosine in ``[-1, 1]``, ``NaN`` where unknown;
+      weight ``app_weight``) — StrongSORT/BoT-SORT style "looks like". A pair
+      below ``app_floor`` is rejected even at high IoU, so a person passing a
+      fixed prop isn't matched onto it.
+    - **Motion direction** (``motsim``, cosine of the angle between a track's
+      heading and the direction to the detection, ``NaN`` where undefined;
+      weight ``mot_weight``) — OC-SORT-style "went the right way", which breaks
+      a crossing tie when geometry and appearance can't.
 
-    Returns ``(matches, unmatched_dets, unmatched_tracks)``.
+    Each cue's ``NaN`` entries fall back to IoU for that pair (neutral). All
+    weights zero / matrices ``None`` reproduces plain IoU matching. Returns
+    ``(matches, unmatched_dets, unmatched_tracks)``.
     """
     if len(dets) == 0 or len(tracks) == 0:
         return [], list(range(len(dets))), list(range(len(tracks)))
 
     m = iou_matrix(dets, tracks)
-    if appsim is not None and app_weight > 0:
-        norm = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
-        # where appearance is unknown (NaN), fall back to IoU for that pair
-        app_component = np.where(np.isnan(norm), m, norm)
-        score = (1.0 - app_weight) * m + app_weight * app_component
+    app_w = app_weight if appsim is not None else 0.0
+    mot_w = mot_weight if motsim is not None else 0.0
+    if app_w > 0 or mot_w > 0:
+        iou_w = max(0.0, 1.0 - app_w - mot_w)
+        score = iou_w * m
+        if app_w > 0:
+            an = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
+            score = score + app_w * np.where(np.isnan(an), m, an)
+        if mot_w > 0:
+            mn = (np.clip(motsim, -1.0, 1.0) + 1.0) / 2.0
+            score = score + mot_w * np.where(np.isnan(mn), m, mn)
     else:
         score = m
 

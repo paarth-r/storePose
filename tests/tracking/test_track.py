@@ -133,3 +133,22 @@ def test_reactivate_reseats_motion_and_keeps_identity():
     assert np.allclose(t.box, [100, 100, 110, 120], atol=1.0)
     assert t.hits == 2  # reactivation counts as a fresh match
     assert t.appearance_mem == ["m1"]
+
+
+def test_velocity_reads_recent_heading():
+    # A track fed rightward detections has a +x velocity and ~0 y.
+    t = Track(0, np.array([0, 0, 10, 20], float), None, None, 1 / 2,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.0)
+    for x in (10, 20, 30):
+        t.predict(0.5)
+        t.update(np.array([x, 0, x + 10, 20], float), None, None, 0.5)
+    vx, vy = t.velocity()
+    assert vx > 0 and abs(vy) < abs(vx)
+    cx, cy = t.last_center()
+    assert cx == 35.0 and cy == 10.0  # center of [30,0,40,20]
+
+
+def test_velocity_zero_for_single_detection():
+    t = Track(0, np.array([0, 0, 10, 20], float), None, None, 1 / 2,
+              min_hits=1, smooth=False, min_cutoff=1.0, beta=0.0)
+    assert t.velocity() == (0.0, 0.0)

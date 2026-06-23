@@ -88,3 +88,22 @@ def test_appearance_nan_pair_falls_back_to_iou():
     matches, _, _ = match([det], [trk], iou_thr=0.3, appsim=appsim,
                           app_weight=0.5, app_floor=0.4)
     assert matches == [(0, 0)]
+
+
+def test_motion_direction_breaks_tie_iou_cannot():
+    # Two tracks with identical boxes (equal IoU to the detection); motion picks
+    # the one whose recent velocity points toward the detection. This is the
+    # crossing case: who-went-where decides when geometry/appearance tie.
+    det = np.array([10, 10, 50, 90], float)
+    trk = np.array([10, 10, 50, 90], float)
+    motsim = np.array([[-0.9, 0.9]], float)  # det is along track 1's heading, against track 0's
+    matches, _, _ = match([det], [trk, trk], iou_thr=0.3, motsim=motsim, mot_weight=0.5)
+    assert matches == [(0, 1)]
+
+
+def test_motion_nan_pair_is_neutral():
+    det = np.array([10, 10, 50, 90], float)
+    trk = np.array([10, 10, 50, 90], float)
+    motsim = np.array([[np.nan]], float)  # stationary track: no heading -> neutral
+    matches, _, _ = match([det], [trk], iou_thr=0.3, motsim=motsim, mot_weight=0.5)
+    assert matches == [(0, 0)]

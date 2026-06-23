@@ -77,6 +77,32 @@ class Track:
         cy = (float(box[1]) + float(box[3])) / 2.0
         self._centers.append((self._t, cx, cy))
 
+    def last_center(self) -> tuple[float, float]:
+        """Center of the most recent detected box."""
+        if not self._centers:
+            cx = (float(self.last_box[0]) + float(self.last_box[2])) / 2.0
+            cy = (float(self.last_box[1]) + float(self.last_box[3])) / 2.0
+            return (cx, cy)
+        _, cx, cy = self._centers[-1]
+        return (cx, cy)
+
+    def velocity(self, window: float = 1.0) -> tuple[float, float]:
+        """Recent heading ``(vx, vy)`` in px/s from detected centers over the last
+        ``window`` seconds, or ``(0, 0)`` if too little history. Used for the
+        motion-direction association cue (who-went-where)."""
+        if len(self._centers) < 2:
+            return (0.0, 0.0)
+        t_last = self._centers[-1][0]
+        pts = [(t, x, y) for (t, x, y) in self._centers if t >= t_last - window]
+        if len(pts) < 2:
+            return (0.0, 0.0)
+        t0, x0, y0 = pts[0]
+        t1, x1, y1 = pts[-1]
+        span = t1 - t0
+        if span <= 0:
+            return (0.0, 0.0)
+        return ((x1 - x0) / span, (y1 - y0) / span)
+
     def stationary(self, window: float, radius: float) -> bool:
         """True if the detected center stayed within ``radius`` px over the last
         ``window`` seconds — and we have a full window of history to judge.

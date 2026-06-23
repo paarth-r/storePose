@@ -119,6 +119,7 @@ class AppConfig:
     reid_thr: float | None = None
     reid_assoc_weight: float = 0.4
     reid_assoc_floor: float = 0.6
+    reid_assoc_motion: float = 0.3
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -379,6 +380,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--reid-assoc-floor", type=float, default=0.6,
         help="Reject a primary match whose appearance similarity is below this, "
              "even at high IoU (stops a person matching onto a prop; measured prop-vs-person <=0.53, self-sim >=0.77). Default 0.6.",
+    )
+    parser.add_argument(
+        "--reid-assoc-motion", type=float, default=0.3,
+        help="Weight of motion-direction (who-went-where) in the association "
+             "cost (0 = off). Breaks crossing ties when IoU and appearance "
+             "cannot. Default 0.3.",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
@@ -648,6 +655,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_thr=args.reid_thr,
         reid_assoc_weight=args.reid_assoc_weight,
         reid_assoc_floor=args.reid_assoc_floor,
+        reid_assoc_motion=args.reid_assoc_motion,
         smooth=args.smooth,
         predict_drift=args.predict_drift,
         coast=args.coast,

@@ -94,6 +94,7 @@ class MultiObjectTracker:
         stationary_radius: float = 0.03,
         assoc_app_weight: float = 0.0,
         assoc_app_floor: float = 0.0,
+        assoc_mot_weight: float = 0.0,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -112,6 +113,7 @@ class MultiObjectTracker:
         self._stationary_radius = stationary_radius
         self._assoc_app_weight = assoc_app_weight
         self._assoc_app_floor = assoc_app_floor
+        self._assoc_mot_weight = assoc_mot_weight
         self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
@@ -162,10 +164,30 @@ class MultiObjectTracker:
                 for j, t in enumerate(self._tracks):
                     if t.appearance_mem is not None:
                         appsim[d, j] = self._appearance.score(t.appearance_mem, dd)
+        # motion-direction cue: does the detection lie along the track's heading?
+        motsim = None
+        if self._assoc_mot_weight > 0 and self._diag > 0 and self._tracks:
+            motsim = np.full((n, len(self._tracks)), np.nan, dtype=np.float32)
+            min_speed = 0.03 * self._diag  # px/s; below this a track has no heading
+            for j, t in enumerate(self._tracks):
+                vx, vy = t.velocity()
+                speed = (vx * vx + vy * vy) ** 0.5
+                if speed < min_speed:
+                    continue  # stationary/jitter -> no direction to be consistent with
+                ux, uy = vx / speed, vy / speed
+                lx, ly = t.last_center()
+                for d in range(n):
+                    b = boxes[d]
+                    wx = (float(b[0]) + float(b[2])) / 2.0 - lx
+                    wy = (float(b[1]) + float(b[3])) / 2.0 - ly
+                    wl = (wx * wx + wy * wy) ** 0.5
+                    if wl > 1e-6:
+                        motsim[d, j] = ux * (wx / wl) + uy * (wy / wl)
         matches, unmatched_dets, unmatched_tracks = match(
             det_boxes, track_boxes, self.iou_thr,
             appsim=appsim, app_weight=self._assoc_app_weight,
             app_floor=self._assoc_app_floor,
+            motsim=motsim, mot_weight=self._assoc_mot_weight,
         )
 
         # 3. update matched tracks
