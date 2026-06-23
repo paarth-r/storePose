@@ -11,7 +11,7 @@ from .busy.types import METRICS as BUSY_METRICS
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
 REID_BACKENDS = ("osnet-x1", "osnet-x025", "histogram")
-_REID_THR_DEFAULTS = {"osnet-x1": 0.5, "osnet-x025": 0.5, "histogram": 0.6}
+_REID_THR_DEFAULTS = {"osnet-x1": 0.65, "osnet-x025": 0.65, "histogram": 0.6}
 
 
 def reid_thr_for(backend: str, override: float | None) -> float:
@@ -98,7 +98,7 @@ class AppConfig:
 
     source: int | str = 0
     mode: str = "balanced"
-    det_conf: float = 0.7
+    det_conf: float = 0.8
     det_overlap: float = 0.8
     kpt_thr: float = 0.5
     device: str = "mps"
@@ -269,8 +269,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--det-conf",
         type=float,
-        default=0.7,
-        help="Person detection confidence threshold (default: 0.7).",
+        default=0.8,
+        help="Person detection confidence threshold (default: 0.8).",
     )
     parser.add_argument(
         "--det-overlap",
@@ -361,7 +361,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reid-thr", type=float, default=None,
         help="Appearance similarity floor for re-attach, in [-1,1]. Default "
-             "resolves per backend (osnet: 0.5, histogram: 0.6).",
+             "resolves per backend (osnet: 0.65, histogram: 0.6).",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",

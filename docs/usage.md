@@ -59,7 +59,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 |------|---------|--------|
 | `--mode` | `balanced` | `lightweight` (faster) \| `balanced` \| `performance` (most accurate). |
 | `--device` | `mps` | `mps` (CoreML, ~8× faster) or `cpu` fallback. |
-| `--det-conf` | `0.7` | Person-detection confidence threshold. |
+| `--det-conf` | `0.8` | Person-detection confidence threshold. |
 | `--det-overlap` | `0.8` | Drop a box more than this fraction contained within a larger one (duplicate-on-one-person suppression). |
 | `--kpt-thr` | `0.5` | Keypoint confidence threshold for drawing / ankle test. |
 | `--no-fps` | — | Hide the FPS overlay. |
@@ -69,7 +69,7 @@ to a video file**. Press **`q`** or **Esc** in the window to quit.
 | `--reid-seconds` | `10.0` | How long a lost track stays re-attachable. |
 | `--reid-backend` | `osnet-x025` | Re-id appearance backend: `osnet-x025` (fast), `osnet-x1` (accurate), or `histogram`. The launcher's `reid` column cycles `osnet-x025 → osnet-x1 → histogram → off` per view. |
 | `--reid-weights` | — | Local OSNet ONNX file overriding the auto-downloaded weights. |
-| `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.5, histogram 0.6). |
+| `--reid-thr` | per-backend | Appearance similarity floor for re-attach (osnet 0.65, histogram 0.6). |
 | `--no-smooth` | — | Disable One-Euro keypoint smoothing. |
 | `--save PATH` | — | Write the annotated stream to an `.mp4`. |
 | `--debug` | — | Step through frames (scrub a rolling buffer); read each person's classification in the dashboard Debug tab. |
