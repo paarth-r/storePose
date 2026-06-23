@@ -6,10 +6,56 @@ from storepose.launcher_core import (
     Column,
     ColumnState,
     View,
+    build_chunk_args,
     build_run,
+    chunk_source_stem,
     default_state,
+    discover_chunks,
     discover_views,
 )
+
+
+# --- chunk discovery / zone generalization -------------------------------
+
+def test_chunk_source_stem_identifies_chunk_clips():
+    p = Path("videos/cumberland/chunks/Counter Overview-converted/part00.mp4")
+    assert chunk_source_stem(p) == "Counter Overview-converted"
+    assert chunk_source_stem(Path("videos/maricopa-0.mp4")) is None
+
+
+def test_discover_chunks_keys_zones_by_parent_source(tmp_path):
+    vids = tmp_path / "videos"
+    cdir = vids / "cam" / "chunks" / "SRC"
+    cdir.mkdir(parents=True)
+    (cdir / "part00.mp4").write_bytes(b"x")
+    (cdir / "part01.mp4").write_bytes(b"x")
+    zones = tmp_path / "zones"; zones.mkdir()
+    (zones / "SRC.json").write_text("{}")          # one zone shared by all chunks
+    (zones / "SRC_alt.json").write_text("{}")
+    calib = tmp_path / "calib"; calib.mkdir()
+    (calib / "SRC.json").write_text("{}")
+
+    views = discover_chunks(vids, zones, calib)
+    assert [v.source.name for v in views] == ["part00.mp4", "part01.mp4"]
+    assert all(v.zone_stem == "SRC" for v in views)   # zones generalize to source
+    assert all(v.has_calib and v.has_alt for v in views)
+
+
+def test_build_chunk_args_uses_parent_source_zones(tmp_path):
+    zones = tmp_path / "zones"; zones.mkdir()
+    (zones / "SRC.json").write_text("{}")
+    (zones / "SRC_pos.json").write_text("{}")
+    calib = tmp_path / "calib"; calib.mkdir()
+    (calib / "SRC.json").write_text("{}")
+    src = tmp_path / "videos/cam/chunks/SRC/part03.mp4"
+    src.parent.mkdir(parents=True); src.write_bytes(b"x")
+    view = View(stem="SRC/part03", script=None, has_calib=True, has_alt=False,
+                source=src, zone_stem="SRC")
+    env, args = build_chunk_args(view, default_state(view), zones, calib)
+    assert "--source" in args and str(src) in args
+    assert "--zone" in args and str(zones / "SRC.json") in args
+    assert "--pos-zone" in args and str(zones / "SRC_pos.json") in args
+    assert "--calib" in args and str(calib / "SRC.json") in args
 
 
 def _make_views(tmp_path, stems_with_calib):

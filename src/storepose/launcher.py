@@ -1,8 +1,9 @@
 """Arrow-driven launcher TUI: pick a saved view, toggle flag columns, run it.
 
 Thin curses shell over :mod:`storepose.launcher_core`. Rows are saved views
-(``viewscripts/*.sh``); columns toggle run flags. Enter tears down curses and
-``exec``s the chosen viewscript with the composed env + args forwarded to it.
+(``viewscripts/*.sh``) plus chunk clips (``videos/**/chunks/<SRC>/partNN.mp4``,
+which share their source ``SRC``'s zones/calib); columns toggle run flags. Enter
+tears down curses and ``exec``s the viewscript, or runs ``main.py`` for a chunk.
 
 Run via ``./video-run.sh`` (which execs ``python -m storepose.launcher``). Any
 args are passed through to the launched run.
@@ -19,14 +20,24 @@ from .launcher_core import (
     COLUMNS,
     Column,
     View,
+    build_chunk_args,
     build_run,
     default_state,
+    discover_chunks,
     discover_views,
 )
 
 _VIEWSCRIPTS = "viewscripts"
 _CALIB = "calib"
 _ZONES = "zones"
+_VIDEOS = "videos"
+
+
+def _compose(view: View, state):
+    """(env, args) for a view — full main.py args for a chunk, else viewscript flags."""
+    if view.source is not None:
+        return build_chunk_args(view, state, _ZONES, _CALIB)
+    return build_run(view, state)
 
 _FLAG_W = 7        # width of each flag cell
 _NAME_W_MAX = 34   # cap on the view-name column
@@ -151,7 +162,7 @@ def _run_ui(stdscr, views):
             states[v.stem] = toggle(v, states[v.stem], COLUMNS[col])
         elif key in (curses.KEY_ENTER, 10, 13):
             v = views[row]
-            env, args = build_run(v, states[v.stem])
+            env, args = _compose(v, states[v.stem])
             return (v, env, args)
 
 
@@ -168,29 +179,34 @@ def _fallback(views):
         print("invalid choice", file=sys.stderr)
         return None
     v = views[int(raw) - 1]
-    env, args = build_run(v, default_state(v))
+    env, args = _compose(v, default_state(v))
     return (v, env, args)
 
 
 def _exec_run(view: View, env, extra_args, passthrough) -> None:
-    script = str(view.script)
-    if not os.access(script, os.X_OK):
-        print(f"error: view script not executable: {script}", file=sys.stderr)
-        raise SystemExit(1)
     full_env = {**os.environ, **env}
-    cmd = [script, *extra_args, *passthrough]
+    if view.source is not None:                       # chunk: run main.py directly
+        cmd = [sys.executable, "main.py", *extra_args, *passthrough]
+        prog = sys.executable
+    else:                                             # saved view: exec its script
+        prog = str(view.script)
+        if not os.access(prog, os.X_OK):
+            print(f"error: view script not executable: {prog}", file=sys.stderr)
+            raise SystemExit(1)
+        cmd = [prog, *extra_args, *passthrough]
     shown = " ".join(extra_args + passthrough) or "(defaults)"
     note = " STOREPOSE_NO_CALIB=1" if env.get("STOREPOSE_NO_CALIB") else ""
     print(f"==> running: {view.stem}  {shown}{note}")
-    os.execvpe(script, cmd, full_env)
+    os.execvpe(prog, cmd, full_env)
 
 
 def main(argv: list[str] | None = None) -> int:
     passthrough = list(sys.argv[1:] if argv is None else argv)
     views = discover_views(_VIEWSCRIPTS, _CALIB, _ZONES)
+    views += discover_chunks(_VIDEOS, _ZONES, _CALIB)  # chunk clips share source zones
     if not views:
-        print(f"No view scripts in {_VIEWSCRIPTS}/. Create one first:  "
-              f"./view-setup.sh -v <video>", file=sys.stderr)
+        print(f"No views: add a viewscript (./view-setup.sh -v <video>) or chunk "
+              f"clips under {_VIDEOS}/**/chunks/.", file=sys.stderr)
         return 1
     if sys.stdin.isatty() and sys.stdout.isatty():
         chosen = curses.wrapper(_run_ui, views)
