@@ -2,7 +2,25 @@
 
 - Date: 2026-06-23
 - Branch: `feat/floor-heatmap-depthpro`
-- Status: Design — pending review
+- Status: Design approved; de-risk validated; building
+
+## De-risk result (validated 2026-06-23)
+
+Ran Depth Pro on a real Counter Overview frame (`videos/cumberland/chunks/
+Counter Overview-converted/part11.mp4`, mid-frame). Confirmed the core
+assumption holds:
+
+- Clean, sharp metric depth (range 0.67–8.60 m, median 2.54 m); self-estimated
+  focal 943 px (~90 deg HFOV, correct for the cam).
+- RANSAC floor plane: normal ~(0, -0.70, -0.71), camera tilt 44.7 deg, camera
+  height 2.69 m — all physically correct for a ceiling security cam.
+- Plane inliers land on the actual floor (walkway tile + aisle floor), avoiding
+  counters/shelves/people.
+
+Key implementation constraint discovered: **Depth Pro OOM-kills on MPS; run on
+CPU** (~60 s/frame, fine for a once-per-camera gate). The `scene/depthpro.py`
+module defaults to CPU. Depth is cached so this cost is paid once. Minor tuning
+left: floor-region mask + inlier threshold to also capture lighter far tile.
 
 ## Problem
 
