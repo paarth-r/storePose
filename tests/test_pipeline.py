@@ -77,3 +77,22 @@ def test_pipeline_handles_no_people():
     )
     result = pipeline.process(np.zeros((40, 40, 3), np.uint8))
     assert result.count == 0
+
+
+def test_pipeline_drops_detections_in_ignore_zone(tmp_path):
+    from storepose.queue.zone import Zone
+    zone_path = str(tmp_path / "ignore.json")
+    Zone([(0, 0), (20, 0), (20, 20), (0, 20)]).save(zone_path)  # masks near-origin
+    inside = [2, 2, 12, 12]     # center (7, 7) -> inside the mask, dropped
+    outside = [100, 100, 110, 110]  # center (105, 105) -> kept
+    boxes = np.array([inside, outside], np.float32)
+    fake_pose = FakePoseModel()
+    pipeline = PosePipeline(
+        AppConfig(ignore_zone=zone_path),
+        detector=FakeDetector(boxes),
+        pose=_pose_with(fake_pose),
+    )
+    result = pipeline.process(np.zeros((200, 200, 3), np.uint8))
+    assert result.count == 1                       # only the outside box survives
+    assert list(result.boxes[0]) == outside        # and it is the right one
+    assert result.det_scores.shape == (1,)

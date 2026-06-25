@@ -39,6 +39,12 @@ def default_blur_zone_path(source: int | str) -> str:
     return str(Path("zones") / f"{name}_blur.json")
 
 
+def default_ignore_zone_path(source: int | str) -> str:
+    """Default ``zones/<name>_ignore.json`` path for a detection ignore zone."""
+    name = f"cam{source}" if isinstance(source, int) else Path(str(source)).stem
+    return str(Path("zones") / f"{name}_ignore.json")
+
+
 def define_zone(source: int | str, out_path: str | None = None) -> str:
     """Open a frame from ``source`` and let the user click a polygon.
 
