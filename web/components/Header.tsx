@@ -19,13 +19,11 @@ export function Header({
     <header className="flex items-end justify-between border-b border-hairline pb-5">
       <div>
         <div className="flex items-baseline gap-2.5">
-          <Image
-            src={mashginLogo}
-            alt="Mashgin"
-            height={22}
-            className="mr-1 h-[22px] w-auto self-center"
-            priority
-          />
+          {/* Mashgin's wordmark is white (built for dark UIs) — set it on a dark
+              chip so the full logo reads on the light theme. */}
+          <span className="mr-1 inline-flex self-center rounded-[8px] bg-[#151515] px-2.5 py-1.5">
+            <Image src={mashginLogo} alt="Mashgin" height={18} className="h-[18px] w-auto" priority />
+          </span>
           <span className="text-[1.35rem] font-semibold tracking-[-0.02em] text-ink">
             Store Busyness
           </span>
