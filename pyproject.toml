@@ -23,6 +23,11 @@ storepose = "storepose.main:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+# depth-pro is pulled from a git URL (Apple ml-depth-pro); hatchling requires
+# this opt-in to allow direct references in project.dependencies.
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/storepose"]
 
