@@ -245,10 +245,11 @@ def _frame(boxes_colors, size=400):
     return f
 
 
-def _reid_tracker(max_age=3, reid_max_age=50):
+def _reid_tracker(max_age=3, reid_max_age=50, gallery_spatial_gate=True):
     return MultiObjectTracker(
         max_age=max_age, min_hits=1, iou_thr=0.3, smooth=False,
         appearance=_ColorStub(), reid=True, reid_max_age=reid_max_age, reid_thr=0.5,
+        gallery_spatial_gate=gallery_spatial_gate,
     )
 
 
@@ -359,17 +360,36 @@ def test_reattach_anchors_to_last_seen_not_coasted_position():
     assert len(out2) == 1 and out2[0].id == 0   # id preserved, not a fresh spawn
 
 
-def test_gallery_reattaches_across_full_frame_exit():
-    tr = _reid_tracker()  # max_age=3, reid_max_age=50
+def test_gallery_reattach_is_location_gated_by_default():
+    # A fully-lost (gallery) track may only be revived within a plausibility
+    # radius around its last-seen center. A same-colored detection on the
+    # opposite side of the frame is too far to be the same person -> new id,
+    # not a false cross-frame revival (the over-merging failure mode).
+    tr = _reid_tracker()  # max_age=3, reid_max_age=50, gate ON
     left = [20, 180, 60, 260]; red = (0, 0, 220)
     out = tr.update(make_result([left]), 1 / 30, _frame([(left, red)]))
     assert out[0].id == 0
     blank = np.zeros((400, 400, 3), np.uint8)
     for _ in range(6):                 # age out past max_age -> gallery
         tr.update(make_result([]), 1 / 30, blank)
-    far = [340, 180, 380, 260]         # opposite side, beyond the old spatial gate cap
+    far = [340, 180, 380, 260]         # opposite side, beyond the spatial gate
     out2 = tr.update(make_result([far]), 1 / 30, _frame([(far, red)]))
-    assert len(out2) == 1 and out2[0].id == 0   # gallery has no spatial gate
+    assert len(out2) == 1 and out2[0].id == 1   # too far -> new id, no teleport
+
+
+def test_gallery_reattaches_across_full_frame_exit_when_gate_disabled():
+    # --no-gallery-spatial-gate restores the old appearance-only cross-exit
+    # re-entry: same color, opposite side, same id.
+    tr = _reid_tracker(gallery_spatial_gate=False)
+    left = [20, 180, 60, 260]; red = (0, 0, 220)
+    out = tr.update(make_result([left]), 1 / 30, _frame([(left, red)]))
+    assert out[0].id == 0
+    blank = np.zeros((400, 400, 3), np.uint8)
+    for _ in range(6):                 # age out past max_age -> gallery
+        tr.update(make_result([]), 1 / 30, blank)
+    far = [340, 180, 380, 260]         # opposite side, beyond the spatial gate
+    out2 = tr.update(make_result([far]), 1 / 30, _frame([(far, red)]))
+    assert len(out2) == 1 and out2[0].id == 0   # appearance-only -> revived
 
 
 def test_gallery_threshold_is_stricter_than_active():

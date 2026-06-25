@@ -16,7 +16,7 @@ from .types import TrackedPerson
 _SPATIAL_GATE_FRAC = 0.12   # base radius as a fraction of the frame diagonal
 _GATE_GROWTH = 0.05         # extra radius per gap frame
 _GATE_CAP_FRAC = 0.5        # never exceed half the frame diagonal
-_GALLERY_MARGIN = 0.05      # gallery (lost) re-attach needs reid_thr + this (no spatial gate)
+_GALLERY_MARGIN = 0.05      # gallery (lost) re-attach needs reid_thr + this (stricter than active)
 
 
 def _center(box: np.ndarray) -> tuple[float, float]:
@@ -95,6 +95,8 @@ class MultiObjectTracker:
         assoc_app_weight: float = 0.0,
         assoc_app_floor: float = 0.0,
         assoc_mot_weight: float = 0.0,
+        assoc_fusion: str = "sum",
+        gallery_spatial_gate: bool = True,
     ):
         self.max_age = max_age
         self.min_hits = min_hits
@@ -114,10 +116,22 @@ class MultiObjectTracker:
         self._assoc_app_weight = assoc_app_weight
         self._assoc_app_floor = assoc_app_floor
         self._assoc_mot_weight = assoc_mot_weight
+        self._assoc_fusion = assoc_fusion
+        self._gallery_spatial_gate = gallery_spatial_gate
         self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
         self._lost: list[_LostEntry] = []
         self._next_id = 0
+        # passive run-stats (no effect on behavior; for A/B instrumentation)
+        self._stats = {"spawn": 0, "active_reattach": 0, "gallery_reattach": 0}
+
+    def stats(self) -> dict:
+        """Cumulative tracking counters for the run (passive instrumentation).
+
+        ``distinct_ids`` is every id ever assigned; ``gallery_reattach`` is the
+        over-merging-prone path (a fully-lost id revived by appearance)."""
+        return {**self._stats, "distinct_ids": self._next_id,
+                "live_tracks": len(self._tracks), "lost_gallery": len(self._lost)}
 
     def _is_stationary(self, t: Track) -> bool:
         """A confirmed track that hasn't moved over the stationary window — a
@@ -188,6 +202,7 @@ class MultiObjectTracker:
             appsim=appsim, app_weight=self._assoc_app_weight,
             app_floor=self._assoc_app_floor,
             motsim=motsim, mot_weight=self._assoc_mot_weight,
+            fusion=self._assoc_fusion,
         )
 
         # 3. update matched tracks
@@ -222,6 +237,7 @@ class MultiObjectTracker:
                 )
             )
             self._next_id += 1
+            self._stats["spawn"] += 1
 
         # 6. cull: aged-out confirmed tracks go to the gallery; drop tentatives
         survivors: list[Track] = []
@@ -280,10 +296,14 @@ class MultiObjectTracker:
     ) -> list[int]:
         """Revive ids for leftover detections via gated appearance match.
 
-        Active (in-frame) candidates keep the spatial gate at ``reid_thr``;
-        gallery (lost) candidates drop the spatial gate and use a stricter
-        ``reid_thr + _GALLERY_MARGIN`` so cross-exit re-entry stays precise.
-        Returns the detection indices that remain unmatched (to be spawned).
+        Active (in-frame) candidates always pass a spatial plausibility gate
+        anchored to their last-seen center (radius grows with the gap, capped
+        at half the frame diagonal) and match at ``reid_thr``. Gallery (lost)
+        candidates match at a stricter ``reid_thr + _GALLERY_MARGIN`` and, when
+        ``gallery_spatial_gate`` is on (default), pass the same spatial gate so
+        a weak embedding cannot teleport an id across the frame. With the gate
+        off they fall back to appearance-only (the old cross-exit re-entry
+        behavior). Returns the detection indices that remain unmatched.
         """
         diag = float(np.hypot(frame.shape[1], frame.shape[0]))
 
@@ -309,16 +329,14 @@ class MultiObjectTracker:
                 continue
             dcx, dcy = _center(boxes[d])
             for ci, cand in enumerate(cands):
-                if cand.lost is None:
+                if cand.lost is None or self._gallery_spatial_gate:
                     radius = min(
                         _SPATIAL_GATE_FRAC * diag * (1.0 + _GATE_GROWTH * cand.gap),
                         _GATE_CAP_FRAC * diag,
                     )
                     if np.hypot(dcx - cand.center[0], dcy - cand.center[1]) > radius:
                         continue
-                    thr = self._reid_thr
-                else:
-                    thr = gallery_thr
+                thr = self._reid_thr if cand.lost is None else gallery_thr
                 sim = self._appearance.score(cand.track.appearance_mem, dd)
                 if sim < thr:
                     continue
@@ -340,4 +358,7 @@ class MultiObjectTracker:
             if cand.lost is not None:
                 self._lost.remove(cand.lost)
                 self._tracks.append(cand.track)
+                self._stats["gallery_reattach"] += 1
+            else:
+                self._stats["active_reattach"] += 1
         return [d for d in unmatched_dets if d not in used_d]
