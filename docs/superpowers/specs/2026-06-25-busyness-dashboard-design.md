@@ -71,12 +71,14 @@ All work in `web/`. New components in `web/components/`, helpers in `web/lib/`.
   + timestamp. Reuses the SVG idioms from `Charts.tsx` (axis, gridlines, tnum labels).
 - Placed as a full-width section above the existing trends row.
 
-### 3. "Turn one cashier into X" — `CashierMultiplier.tsx` (new)
-- Hero stat card. **X = `other_avg / mashgin_avg_eff`** (how many staffed lanes one
-  Mashgin kiosk's throughput replaces), computed client-side. Display big: **"1 kiosk = X
-  cashiers"** in the Mashgin lime accent.
+### 3. "Turn one cashier into N" — `CashierMultiplier.tsx` (new)
+- Hero stat card. **N = `Math.ceil(other_avg / mashgin_avg_eff)`** (how many staffed
+  lanes one Mashgin kiosk's throughput replaces), computed client-side and **rounded up**.
+- The card must show the literal phrase **"Turn one cashier into N"** with the integer N
+  rendered large in the Mashgin lime accent (e.g. "Turn one cashier into **4**").
 - Supporting line: per-customer seconds at Mashgin (`mashgin_avg_eff`) vs staffed
-  (`other_avg`), plus the existing `delta` ("Xs saved per customer").
+  (`other_avg`), plus the existing `delta` ("Xs saved per customer"), and the exact
+  (unrounded) ratio as small print for honesty.
 - Empty/degenerate guard: if `other_n === 0` or `mashgin_avg_eff <= 0`, show
   "awaiting staffed-lane data" instead of a divide-by-zero / Infinity.
 
