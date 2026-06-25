@@ -11,7 +11,7 @@ from .busy.types import METRICS as BUSY_METRICS
 MODES = ("lightweight", "balanced", "performance")
 DEVICES = ("cpu", "mps")
 REID_BACKENDS = ("osnet-x1", "osnet-x025", "histogram")
-_REID_THR_DEFAULTS = {"osnet-x1": 0.8, "osnet-x025": 0.8, "histogram": 0.6}
+_REID_THR_DEFAULTS = {"osnet-x1": 0.85, "osnet-x025": 0.85, "histogram": 0.6}
 
 
 def reid_thr_for(backend: str, override: float | None) -> float:
@@ -117,9 +117,10 @@ class AppConfig:
     reid_backend: str = "osnet-x025"
     reid_weights: str | None = None
     reid_thr: float | None = None
-    reid_assoc_weight: float = 0.4
+    reid_assoc_weight: float = 0.2
     reid_assoc_floor: float = 0.6
     reid_assoc_motion: float = 0.3
+    gallery_spatial_gate: bool = True
     smooth: bool = True
     smooth_cutoff: float = 1.0
     smooth_beta: float = 0.007
@@ -136,6 +137,8 @@ class AppConfig:
     no_alt: bool = False
     blur_zone: str | None = None
     define_blur_zone: bool = False
+    ignore_zone: str | None = None
+    define_ignore_zone: bool = False
     wait_enter_frames: int = 5
     pos_enter_frames: int = 3
     transit_speed: float = 0.4
@@ -277,7 +280,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.5,
         help="Person detection confidence threshold (default: 0.5). Props are "
-             "not separable by score (use the stationary filter); a higher "
+             "not separable by score (mask them with --ignore-zone); a higher "
              "threshold mainly costs recall on partially-occluded people.",
     )
     parser.add_argument(
@@ -372,9 +375,11 @@ def _build_parser() -> argparse.ArgumentParser:
              "resolves per backend (osnet: 0.8, histogram: 0.6).",
     )
     parser.add_argument(
-        "--reid-assoc-weight", type=float, default=0.4,
+        "--reid-assoc-weight", type=float, default=0.2,
         help="Weight of appearance vs IoU in the primary association cost "
-             "(0 = IoU only; fuses 'looks like' into the match). Default 0.4.",
+             "(0 = IoU only; fuses 'looks like' into the match). Kept low: the "
+             "street-trained embedding is the weak signal on an overhead store "
+             "cam, so geometry leads and appearance is a tiebreaker. Default 0.2.",
     )
     parser.add_argument(
         "--reid-assoc-floor", type=float, default=0.6,
@@ -386,6 +391,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Weight of motion-direction (who-went-where) in the association "
              "cost (0 = off). Breaks crossing ties when IoU and appearance "
              "cannot. Default 0.3.",
+    )
+    parser.add_argument(
+        "--no-gallery-spatial-gate", dest="gallery_spatial_gate",
+        action="store_false",
+        help="Let a fully-lost (gallery) track re-attach to a detection "
+             "anywhere in frame on appearance alone (the old cross-exit "
+             "re-entry behavior). By default the gallery re-attach is location-"
+             "gated like the active path, so a weak embedding cannot teleport "
+             "an id across the frame.",
     )
     parser.add_argument(
         "--no-smooth", dest="smooth", action="store_false",
@@ -455,6 +469,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--define-blur-zone", dest="define_blur_zone", action="store_true",
         help="Launch the interactive editor for the censor/blur zone and exit.",
+    )
+    parser.add_argument(
+        "--ignore-zone", default=None, metavar="PATH",
+        help="Ignore-region JSON; drop person detections whose box center falls "
+             "inside these polygons before tracking. Mask a fixed prop (a stand/"
+             "box that detects as a person and steals ids); draw it tightly so a "
+             "taller person crossing in front (center above the mask) is kept.",
+    )
+    parser.add_argument(
+        "--define-ignore-zone", dest="define_ignore_zone", action="store_true",
+        help="Launch the interactive editor for the ignore/mask zone and exit.",
     )
     parser.add_argument(
         "--no-alt", dest="no_alt", action="store_true",
@@ -656,6 +681,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_assoc_weight=args.reid_assoc_weight,
         reid_assoc_floor=args.reid_assoc_floor,
         reid_assoc_motion=args.reid_assoc_motion,
+        gallery_spatial_gate=args.gallery_spatial_gate,
         smooth=args.smooth,
         predict_drift=args.predict_drift,
         coast=args.coast,
@@ -672,6 +698,8 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         no_alt=args.no_alt,
         blur_zone=args.blur_zone,
         define_blur_zone=args.define_blur_zone,
+        ignore_zone=args.ignore_zone,
+        define_ignore_zone=args.define_ignore_zone,
         wait_enter_frames=args.wait_enter_frames,
         pos_enter_frames=args.pos_enter_frames,
         transit_speed=args.transit_speed,

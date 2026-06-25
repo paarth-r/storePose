@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import json
+import os
 import sys
 import time
 import webbrowser
@@ -88,6 +90,7 @@ def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
         assoc_app_weight=config.reid_assoc_weight,
         assoc_app_floor=config.reid_assoc_floor,
         assoc_mot_weight=config.reid_assoc_motion,
+        gallery_spatial_gate=config.gallery_spatial_gate,
     )
 
 
@@ -247,6 +250,7 @@ class Runner:
         meter = FpsMeter()
         print(f"Models ready. Source: {config.source}. Press 'q' or Esc to quit.")
 
+        tracker = None
         try:
             with ExitStack() as stack:
                 source = stack.enter_context(VideoSource(config.source))
@@ -492,6 +496,13 @@ class Runner:
             pass
         finally:
             cv2.destroyAllWindows()
+            stats_path = os.environ.get("STOREPOSE_TRACK_STATS")
+            if stats_path and tracker is not None:
+                try:
+                    Path(stats_path).write_text(json.dumps(tracker.stats(), indent=2))
+                    print(f"Wrote tracking stats to {stats_path}")
+                except OSError as exc:
+                    print(f"Could not write tracking stats: {exc}", file=sys.stderr)
 
         if save_path:
             print(f"Done. Wrote {save_path}")
