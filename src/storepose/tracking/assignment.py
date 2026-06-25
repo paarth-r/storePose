@@ -5,6 +5,26 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
+# BoT-SORT gated-minimum fusion (Aharon 2022): appearance is admitted only when
+# a pair is both visually close (cosine distance < gate) AND spatially close
+# (IoU > 1 - gate); admitted appearance is halved, then cost = min(d_iou, d_cos).
+# So a weak embedding can only ever lower the cost of a geometrically-plausible
+# match -- it can never override geometry to merge two distant look-alikes.
+_BOTSORT_COS_GATE = 0.25   # admit appearance only when cosine distance < this (sim > 0.75)
+_BOTSORT_IOU_GATE = 0.5    # ...and d_iou < this (IoU > 0.5)
+_BOTSORT_APP_SCALE = 0.5   # admitted appearance distance is halved
+
+
+def _botsort_cost(m: np.ndarray, appsim: np.ndarray | None) -> np.ndarray:
+    """BoT-SORT gated-minimum cost from an IoU matrix and cosine ``appsim``."""
+    d_iou = 1.0 - m
+    if appsim is None:
+        return d_iou
+    d_cos = 1.0 - np.clip(appsim, -1.0, 1.0)          # cosine distance in [0, 2]
+    admit = (d_cos < _BOTSORT_COS_GATE) & (d_iou < _BOTSORT_IOU_GATE)  # NaN -> False
+    d_cos_hat = np.where(admit, _BOTSORT_APP_SCALE * d_cos, 1.0)
+    return np.minimum(d_iou, d_cos_hat)
+
 
 def iou(a: np.ndarray, b: np.ndarray) -> float:
     """Intersection-over-union of two ``xyxy`` boxes."""
@@ -32,7 +52,7 @@ def match(
     dets: list[np.ndarray], tracks: list[np.ndarray], iou_thr: float,
     *, appsim: np.ndarray | None = None, app_weight: float = 0.0,
     app_floor: float = 0.0, motsim: np.ndarray | None = None,
-    mot_weight: float = 0.0,
+    mot_weight: float = 0.0, fusion: str = "sum",
 ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
     """Associate detections to tracks, gated by ``iou_thr``.
 
@@ -48,28 +68,40 @@ def match(
       a crossing tie when geometry and appearance can't.
 
     Each cue's ``NaN`` entries fall back to IoU for that pair (neutral). All
-    weights zero / matrices ``None`` reproduces plain IoU matching. Returns
+    weights zero / matrices ``None`` reproduces plain IoU matching.
+
+    ``fusion`` selects how the cues combine:
+    - ``"sum"`` (default): the weighted blend above (additive; appearance can
+      pull a match up or, via ``app_floor``, veto it).
+    - ``"botsort"``: BoT-SORT gated-minimum ``cost = min(d_iou, gated d_cos)``,
+      where appearance is admitted only when both spatially and visually close
+      (see ``_botsort_cost``). Appearance can only *help* a plausible match,
+      never override geometry. ``motsim`` is unused in this mode.
+
+    The ``iou_thr`` and ``app_floor`` post-filters apply in both modes. Returns
     ``(matches, unmatched_dets, unmatched_tracks)``.
     """
     if len(dets) == 0 or len(tracks) == 0:
         return [], list(range(len(dets))), list(range(len(tracks)))
 
     m = iou_matrix(dets, tracks)
-    app_w = app_weight if appsim is not None else 0.0
-    mot_w = mot_weight if motsim is not None else 0.0
-    if app_w > 0 or mot_w > 0:
-        iou_w = max(0.0, 1.0 - app_w - mot_w)
-        score = iou_w * m
-        if app_w > 0:
-            an = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
-            score = score + app_w * np.where(np.isnan(an), m, an)
-        if mot_w > 0:
-            mn = (np.clip(motsim, -1.0, 1.0) + 1.0) / 2.0
-            score = score + mot_w * np.where(np.isnan(mn), m, mn)
+    if fusion == "botsort":
+        rows, cols = linear_sum_assignment(_botsort_cost(m, appsim))  # minimize cost
     else:
-        score = m
-
-    rows, cols = linear_sum_assignment(-score)  # maximize the (blended) score
+        app_w = app_weight if appsim is not None else 0.0
+        mot_w = mot_weight if motsim is not None else 0.0
+        if app_w > 0 or mot_w > 0:
+            iou_w = max(0.0, 1.0 - app_w - mot_w)
+            score = iou_w * m
+            if app_w > 0:
+                an = (np.clip(appsim, -1.0, 1.0) + 1.0) / 2.0  # cosine -> [0, 1]
+                score = score + app_w * np.where(np.isnan(an), m, an)
+            if mot_w > 0:
+                mn = (np.clip(motsim, -1.0, 1.0) + 1.0) / 2.0
+                score = score + mot_w * np.where(np.isnan(mn), m, mn)
+        else:
+            score = m
+        rows, cols = linear_sum_assignment(-score)  # maximize the (blended) score
 
     matches: list[tuple[int, int]] = []
     unmatched_dets = set(range(len(dets)))

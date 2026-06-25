@@ -90,6 +90,7 @@ def build_tracker(config: AppConfig, base_fps: float) -> "MultiObjectTracker":
         assoc_app_weight=config.reid_assoc_weight,
         assoc_app_floor=config.reid_assoc_floor,
         assoc_mot_weight=config.reid_assoc_motion,
+        assoc_fusion=config.assoc_fusion,
         gallery_spatial_gate=config.gallery_spatial_gate,
     )
 

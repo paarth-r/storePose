@@ -95,6 +95,7 @@ class MultiObjectTracker:
         assoc_app_weight: float = 0.0,
         assoc_app_floor: float = 0.0,
         assoc_mot_weight: float = 0.0,
+        assoc_fusion: str = "sum",
         gallery_spatial_gate: bool = True,
     ):
         self.max_age = max_age
@@ -115,6 +116,7 @@ class MultiObjectTracker:
         self._assoc_app_weight = assoc_app_weight
         self._assoc_app_floor = assoc_app_floor
         self._assoc_mot_weight = assoc_mot_weight
+        self._assoc_fusion = assoc_fusion
         self._gallery_spatial_gate = gallery_spatial_gate
         self._diag = 0.0  # frame diagonal (px), set once a frame is seen
         self._tracks: list[Track] = []
@@ -200,6 +202,7 @@ class MultiObjectTracker:
             appsim=appsim, app_weight=self._assoc_app_weight,
             app_floor=self._assoc_app_floor,
             motsim=motsim, mot_weight=self._assoc_mot_weight,
+            fusion=self._assoc_fusion,
         )
 
         # 3. update matched tracks
