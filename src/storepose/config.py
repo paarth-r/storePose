@@ -120,6 +120,7 @@ class AppConfig:
     reid_assoc_weight: float = 0.2
     reid_assoc_floor: float = 0.6
     reid_assoc_motion: float = 0.3
+    assoc_fusion: str = "sum"
     gallery_spatial_gate: bool = True
     smooth: bool = True
     smooth_cutoff: float = 1.0
@@ -390,7 +391,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--reid-assoc-motion", type=float, default=0.3,
         help="Weight of motion-direction (who-went-where) in the association "
              "cost (0 = off). Breaks crossing ties when IoU and appearance "
-             "cannot. Default 0.3.",
+             "cannot. Default 0.3. (Used by --assoc-fusion sum; ignored by botsort.)",
+    )
+    parser.add_argument(
+        "--assoc-fusion", choices=("sum", "botsort"), default="sum",
+        help="How IoU/appearance/motion combine in the primary match. 'sum' "
+             "(default): weighted blend + appearance veto. 'botsort': BoT-SORT "
+             "gated minimum -- appearance only helps a spatially+visually close "
+             "pair and can never override geometry (motion unused).",
     )
     parser.add_argument(
         "--no-gallery-spatial-gate", dest="gallery_spatial_gate",
@@ -681,6 +689,7 @@ def from_args(argv: list[str] | None = None) -> AppConfig:
         reid_assoc_weight=args.reid_assoc_weight,
         reid_assoc_floor=args.reid_assoc_floor,
         reid_assoc_motion=args.reid_assoc_motion,
+        assoc_fusion=args.assoc_fusion,
         gallery_spatial_gate=args.gallery_spatial_gate,
         smooth=args.smooth,
         predict_drift=args.predict_drift,

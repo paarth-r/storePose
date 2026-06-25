@@ -107,3 +107,30 @@ def test_motion_nan_pair_is_neutral():
     motsim = np.array([[np.nan]], float)  # stationary track: no heading -> neutral
     matches, _, _ = match([det], [trk], iou_thr=0.3, motsim=motsim, mot_weight=0.5)
     assert matches == [(0, 0)]
+
+
+def test_botsort_without_appearance_is_iou_matching():
+    dets = [np.array([0, 0, 10, 10], float), np.array([100, 0, 110, 10], float)]
+    trks = [np.array([101, 0, 111, 10], float), np.array([1, 1, 11, 11], float)]
+    matches, ud, ut = match(dets, trks, iou_thr=0.3, fusion="botsort")
+    assert sorted(matches) == [(0, 1), (1, 0)] and ud == [] and ut == []
+
+
+def test_botsort_appearance_cannot_override_geometry():
+    # Appearance strongly favors the far track, but BoT-SORT gates appearance out
+    # for a spatially-implausible pair -> geometry wins, no teleport merge.
+    det = np.array([0, 0, 10, 10], float)
+    trks = [np.array([0, 0, 10, 10], float), np.array([200, 200, 210, 210], float)]
+    appsim = np.array([[0.3, 0.99]], float)  # looks like the far track 1
+    matches, _, _ = match([det], trks, iou_thr=0.3, appsim=appsim, fusion="botsort")
+    assert matches == [(0, 0)]  # matched by geometry, not the distant look-alike
+
+
+def test_botsort_appearance_breaks_tie_when_both_close():
+    # Two tracks both overlap the detection; appearance is admitted (both close)
+    # and lowers the cost of the one it looks like.
+    det = np.array([10, 10, 50, 90], float)
+    trks = [np.array([12, 12, 52, 92], float), np.array([8, 8, 48, 88], float)]
+    appsim = np.array([[0.3, 0.95]], float)  # looks like track 1
+    matches, _, _ = match([det], trks, iou_thr=0.3, appsim=appsim, fusion="botsort")
+    assert matches == [(0, 1)]
