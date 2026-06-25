@@ -33,3 +33,7 @@ calib/
 
 # Scratch demo artifacts (local walkthrough only, not committed)
 demo/
+
+# Depth Pro model weights (1.9 GB, downloaded via get_pretrained_models)
+checkpoints/
+scratch_3d/
