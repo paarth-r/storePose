@@ -4,8 +4,9 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "storePose · Line Monitor",
+  title: "Mashgin · Store Busyness",
   description: "Live checkout-line analytics — occupancy, wait times, and Mashgin vs staffed speed.",
+  icons: { icon: "/mashgin-favicon.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

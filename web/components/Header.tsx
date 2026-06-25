@@ -1,4 +1,17 @@
-export function Header({ connected, now }: { connected: boolean; now: number }) {
+import Image from "next/image";
+import mashginLogo from "@/public/mashgin-logo.png";
+
+export function Header({
+  connected,
+  now,
+  showDebug,
+  onToggleDebug,
+}: {
+  connected: boolean;
+  now: number;
+  showDebug: boolean;
+  onToggleDebug: () => void;
+}) {
   // process clock (seconds since start) → m:ss, an honest "session time"
   const m = Math.floor(now / 60);
   const s = Math.floor(now % 60);
@@ -6,15 +19,33 @@ export function Header({ connected, now }: { connected: boolean; now: number }) 
     <header className="flex items-end justify-between border-b border-hairline pb-5">
       <div>
         <div className="flex items-baseline gap-2.5">
-          <span className="text-[1.35rem] font-semibold tracking-[-0.02em] text-ink">storePose</span>
+          <Image
+            src={mashginLogo}
+            alt="Mashgin"
+            height={22}
+            className="mr-1 h-[22px] w-auto self-center"
+            priority
+          />
+          <span className="text-[1.35rem] font-semibold tracking-[-0.02em] text-ink">
+            Store Busyness
+          </span>
           <span className="h-[15px] w-px self-center bg-hairline-strong" />
-          <span className="text-[0.86rem] font-medium text-muted">Line Monitor</span>
+          <span className="text-[0.86rem] font-medium text-muted">storePose · Line Monitor</span>
         </div>
         <p className="mt-1 text-[0.8rem] text-faint">
-          Live checkout-line analytics — occupancy, wait times, and checkout speed.
+          Live checkout-line analytics — occupancy, wait times, and Mashgin vs staffed speed.
         </p>
       </div>
       <div className="flex items-center gap-4 text-[0.78rem]">
+        <button
+          type="button"
+          onClick={onToggleDebug}
+          aria-pressed={showDebug}
+          className="rounded-full border border-hairline px-3 py-[5px] font-medium text-muted transition-colors hover:bg-sunken"
+          style={showDebug ? { color: "var(--color-ink)", background: "var(--color-sunken)" } : undefined}
+        >
+          Debug {showDebug ? "on" : "off"}
+        </button>
         <span className="tnum text-faint">
           session {m}:{s.toString().padStart(2, "0")}
         </span>
