@@ -120,7 +120,7 @@ class AppConfig:
     reid_assoc_weight: float = 0.2
     reid_assoc_floor: float = 0.6
     reid_assoc_motion: float = 0.3
-    assoc_fusion: str = "sum"
+    assoc_fusion: str = "botsort"
     gallery_spatial_gate: bool = True
     smooth: bool = True
     smooth_cutoff: float = 1.0
@@ -394,11 +394,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "cannot. Default 0.3. (Used by --assoc-fusion sum; ignored by botsort.)",
     )
     parser.add_argument(
-        "--assoc-fusion", choices=("sum", "botsort"), default="sum",
-        help="How IoU/appearance/motion combine in the primary match. 'sum' "
-             "(default): weighted blend + appearance veto. 'botsort': BoT-SORT "
-             "gated minimum -- appearance only helps a spatially+visually close "
-             "pair and can never override geometry (motion unused).",
+        "--assoc-fusion", choices=("sum", "botsort"), default="botsort",
+        help="How IoU/appearance/motion combine in the primary match. 'botsort' "
+             "(default): BoT-SORT gated minimum -- appearance only helps a "
+             "spatially+visually close pair and can never override geometry "
+             "(motion unused). 'sum': weighted blend + appearance veto, with the "
+             "--reid-assoc-* weights and the motion-direction cue.",
     )
     parser.add_argument(
         "--no-gallery-spatial-gate", dest="gallery_spatial_gate",

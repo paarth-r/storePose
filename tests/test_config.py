@@ -161,6 +161,8 @@ def test_stationary_filter_on_by_default_zero_disables():
 def test_appearance_fused_association_on_by_default():
     c = from_args([])
     assert c.reid_assoc_weight == 0.2 and c.reid_assoc_floor == 0.6
+    assert c.assoc_fusion == "botsort"  # BoT-SORT gated-min is the default fusion
+    assert from_args(["--assoc-fusion", "sum"]).assoc_fusion == "sum"
     assert from_args(["--reid-assoc-weight", "0"]).reid_assoc_weight == 0.0
 
 
