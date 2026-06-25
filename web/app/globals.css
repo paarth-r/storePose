@@ -26,6 +26,10 @@
   --color-busy-wash: #fdeef0;
   --color-accent: #15803d;
 
+  --color-mashgin: #E4F222;       /* Mashgin brand lime — accent for Mashgin data */
+  --color-mashgin-ink: #7e8a10;   /* readable lime for text/fills on the light theme */
+  --color-mashgin-wash: #f7fbcf;
+
   --shadow-card: 0 1px 2px rgba(20, 20, 25, 0.04), 0 1px 3px rgba(20, 20, 25, 0.05);
   --shadow-raised: 0 1px 2px rgba(20, 20, 25, 0.05), 0 8px 24px rgba(20, 20, 25, 0.07);
 }

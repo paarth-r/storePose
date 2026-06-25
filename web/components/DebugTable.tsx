@@ -8,10 +8,10 @@ const FLAGS: { key: "line" | "pos" | "reg" | "transit"; label: string }[] = [
   { key: "transit", label: "Transit" },
 ];
 
-/** Per-person reasoning — only rendered when the process runs with --debug. */
-export function DebugTable({ m }: { m: Metrics | null }) {
+/** Per-person reasoning — gated behind the header Debug toggle (default off). */
+export function DebugTable({ m, show }: { m: Metrics | null; show: boolean }) {
   const rows = m?.debug.rows ?? [];
-  if (!rows.length) return null;
+  if (!show || !rows.length) return null;
 
   return (
     <Card className="p-5">
