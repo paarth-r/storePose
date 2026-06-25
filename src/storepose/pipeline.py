@@ -10,6 +10,7 @@ from .config import AppConfig
 from .detector import PersonDetector
 from .model_zoo import resolve
 from .pose import PoseEstimator
+from .queue.zone import Zone
 
 
 @dataclass(frozen=True)
@@ -50,10 +51,27 @@ class PosePipeline:
         spec = resolve(config.mode)
         self._detector = detector or PersonDetector(spec.detector, config)
         self._pose = pose or PoseEstimator(spec.pose, config)
+        self._ignore_zone = Zone.load(config.ignore_zone) if config.ignore_zone else None
+
+    def _drop_ignored(self, boxes, det_scores):
+        """Remove detections whose box center is inside the ignore zone.
+
+        Masks a fixed prop at the source: it never reaches pose or the tracker,
+        so it cannot be tracked as a person or hand its id to a passer-by."""
+        if self._ignore_zone is None or len(boxes) == 0:
+            return boxes, det_scores
+        cx = (boxes[:, 0] + boxes[:, 2]) / 2.0
+        cy = (boxes[:, 1] + boxes[:, 3]) / 2.0
+        keep = np.array(
+            [not self._ignore_zone.contains((x, y)) for x, y in zip(cx, cy)],
+            dtype=bool,
+        )
+        return boxes[keep], det_scores[keep]
 
     def process(self, frame: np.ndarray) -> FrameResult:
         """Detect people and estimate their poses for ``frame``."""
         boxes, det_scores = self._detector.detect(frame)
+        boxes, det_scores = self._drop_ignored(boxes, det_scores)
         keypoints, scores = self._pose.estimate(frame, boxes)
         return FrameResult(boxes=boxes, keypoints=keypoints, scores=scores,
                            det_scores=det_scores)

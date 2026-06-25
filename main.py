@@ -37,6 +37,12 @@ def main(argv: list[str] | None = None) -> int:
         saved = define_zones(config.source, blur_path=config.blur_zone, only="blur")
         print(f"Run with: --blur-zone {saved['blur']}" if "blur" in saved else "Nothing saved.")
         return 0
+    if config.define_ignore_zone:
+        from storepose.queue.zone_editor import define_zone, default_ignore_zone_path
+        out_path = config.ignore_zone or default_ignore_zone_path(config.source)
+        saved = define_zone(config.source, out_path)
+        print(f"Run with: --ignore-zone {saved}")
+        return 0
     if config.calibrate:
         from storepose.busy.calibrate import calibrate
         try:
